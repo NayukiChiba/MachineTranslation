@@ -20,6 +20,12 @@ class DataConfig:
     # 中英文长度比例上限，用于过滤明显错位的平行句对
     MAX_LENGTH_RATIO: float = 4.0
 
+    # source 序列最大 token 数，包含 <eos>
+    MAX_SOURCE_TOKENS: int = 128
+
+    # target 序列最大 token 数，包含 <bos> 或 <eos>
+    MAX_TARGET_TOKENS: int = 128
+
 
 class TokenizerConfig:
     """SentencePiece 分词器配置"""
