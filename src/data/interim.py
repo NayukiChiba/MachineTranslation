@@ -196,8 +196,8 @@ def create_interim_file(input_path: Path, output_path: Path) -> None:
     print("-" * 60)
 
 
-def main() -> None:
-    """清洗 OPUS-100 英中数据集"""
+def create_interim_splits() -> None:
+    """生成 train / validation / test 三个 interim 数据集"""
     create_interim_file(
         paths.RAW_TRAIN_DATASET_PATH,
         paths.INTERIM_TRAIN_DATASET_PATH,
@@ -212,6 +212,11 @@ def main() -> None:
     )
 
     print("OPUS-100 英中数据集清洗完成")
+
+
+def main() -> None:
+    """主函数：生成 interim 数据集"""
+    create_interim_splits()
 
 
 if __name__ == "__main__":

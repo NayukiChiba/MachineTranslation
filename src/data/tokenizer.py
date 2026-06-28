@@ -193,7 +193,7 @@ class SentencePieceTokenizer:
         return self.processor.decode(token_ids)
 
 
-def main() -> None:
+def train_tokenizer() -> None:
     """训练 OPUS-100 英中共享 SentencePiece 分词器"""
     build_tokenizer_corpus(
         paths.INTERIM_TRAIN_DATASET_PATH,
@@ -210,6 +210,11 @@ def main() -> None:
     print(f"unk_id: {tokenizer.unk_id}")
     print(f"bos_id: {tokenizer.bos_id}")
     print(f"eos_id: {tokenizer.eos_id}")
+
+
+def main() -> None:
+    """主函数：训练分词器"""
+    train_tokenizer()
 
 
 if __name__ == "__main__":

@@ -7,8 +7,9 @@
 3. 导出 train / validation / test 三个 DataLoader
 
 注意：
-    本模块不做分词、不做清洗、不生成 mask。
-    这些样本在 src.data.process 中已经处理完毕。
+    本模块不生成 mask。
+    create_dataloaders 默认会检查数据产物是否存在。
+    如果缺失，会自动执行 raw -> interim -> tokenizer -> processed 管线。
 """
 
 import json
@@ -21,6 +22,79 @@ from torch.utils.data import DataLoader, Dataset
 
 from configs import paths
 from configs.defaults import TokenizerConfig
+
+
+def files_exist(file_paths: list[Path]) -> bool:
+    """
+    判断一组文件是否都存在且非空
+
+    Args:
+        file_paths: 文件路径列表
+
+    Returns:
+        bool: 所有文件存在且非空时返回 True
+    """
+    return all(
+        file_path.exists() and file_path.stat().st_size > 0 for file_path in file_paths
+    )
+
+
+def prepare_data_pipeline(force: bool = False) -> None:
+    """
+    准备机器翻译训练所需的完整数据管线
+
+    Args:
+        force: 是否强制重新生成所有数据产物
+
+    注意：
+        第一次运行会比较慢，因为需要下载数据、清洗数据、训练分词器、
+        生成 processed 数据。之后只要文件存在，就会直接跳过。
+    """
+    raw_paths = [
+        paths.RAW_TRAIN_DATASET_PATH,
+        paths.RAW_VAL_DATASET_PATH,
+        paths.RAW_TEST_DATASET_PATH,
+    ]
+    interim_paths = [
+        paths.INTERIM_TRAIN_DATASET_PATH,
+        paths.INTERIM_VAL_DATASET_PATH,
+        paths.INTERIM_TEST_DATASET_PATH,
+    ]
+    tokenizer_paths = [
+        paths.TOKENIZER_MODEL_PATH,
+        paths.TOKENIZER_VOCAB_PATH,
+    ]
+    processed_paths = [
+        paths.PROCESSED_TRAIN_DATASET_PATH,
+        paths.PROCESSED_VAL_DATASET_PATH,
+        paths.PROCESSED_TEST_DATASET_PATH,
+    ]
+
+    if force or not files_exist(raw_paths):
+        print("准备 raw 数据集")
+        from src.data.download import download_raw_dataset
+
+        download_raw_dataset()
+
+    if force or not files_exist(interim_paths):
+        print("准备 interim 数据集")
+        from src.data.interim import create_interim_splits
+
+        create_interim_splits()
+
+    if force or not files_exist(tokenizer_paths):
+        print("准备 SentencePiece 分词器")
+        from src.data.tokenizer import train_tokenizer
+
+        train_tokenizer()
+
+    if force or not files_exist(processed_paths):
+        print("准备 processed 数据集")
+        from src.data.process import process_all_splits
+        from src.data.tokenizer import SentencePieceTokenizer
+
+        tokenizer = SentencePieceTokenizer(paths.TOKENIZER_MODEL_PATH)
+        process_all_splits(tokenizer)
 
 
 def load_jsonl_item(line: str) -> dict[str, Any] | None:
@@ -200,6 +274,8 @@ def create_dataloaders(
     batch_size: int,
     pad_id: int = TokenizerConfig.PAD_ID,
     num_workers: int = 0,
+    auto_prepare: bool = True,
+    force_prepare: bool = False,
 ) -> tuple[DataLoader, DataLoader, DataLoader]:
     """
     创建 train / validation / test 三个 DataLoader
@@ -208,10 +284,15 @@ def create_dataloaders(
         batch_size: batch 大小
         pad_id: padding token id
         num_workers: DataLoader worker 数量
+        auto_prepare: 是否自动准备缺失的数据产物
+        force_prepare: 是否强制重新生成数据产物
 
     Returns:
         tuple[DataLoader, DataLoader, DataLoader]: 训练、验证、测试 DataLoader
     """
+    if auto_prepare:
+        prepare_data_pipeline(force=force_prepare)
+
     train_dataloader = create_dataloader(
         paths.PROCESSED_TRAIN_DATASET_PATH,
         batch_size=batch_size,

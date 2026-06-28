@@ -41,8 +41,8 @@ def save_split_to_jsonl(
             file.write(json.dumps(data_item, ensure_ascii=False) + "\n")
 
 
-def main() -> None:
-    """从 Hugging Face 缓存导出原始 JSONL 数据集"""
+def download_raw_dataset() -> None:
+    """从 Hugging Face 下载或缓存中导出原始 JSONL 数据集"""
     dataset = load_dataset(
         paths.OPUS100_DATASET_NAME,
         paths.OPUS100_LANGUAGE_PAIR,
@@ -59,6 +59,11 @@ def main() -> None:
     print(f"训练集: {paths.RAW_TRAIN_DATASET_PATH}")
     print(f"验证集: {paths.RAW_VAL_DATASET_PATH}")
     print(f"测试集: {paths.RAW_TEST_DATASET_PATH}")
+
+
+def main() -> None:
+    """主函数：生成 raw 数据集"""
+    download_raw_dataset()
 
 
 if __name__ == "__main__":
