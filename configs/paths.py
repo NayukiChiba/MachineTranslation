@@ -1,25 +1,65 @@
+"""
+项目路径配置
+
+功能：
+1. 统一管理项目目录、数据集目录和输出目录
+2. 固定 Hugging Face 数据集缓存位置
+3. 将 OPUS-100 英中数据集导出为项目可控的 JSONL 文件
+"""
+
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
 
 def get_dir(path: Path) -> Path:
-    """确保目录存在,不存在则创建"""
+    """确保目录存在，不存在则创建"""
     if not path.exists():
         path.mkdir(parents=True, exist_ok=True)
     return path
 
 
-# 数据集位置
-DATASETS_DIR = get_dir(Path("D:/Datasets/MathineTranslation"))
-# 下载位置
+# 项目外部数据根目录
+DATASETS_DIR = get_dir(Path("D:/Datasets/MachineTranslation"))
+
+# Hugging Face 下载和缓存目录
 DOWNLOADS_DIR = get_dir(DATASETS_DIR / "downloads")
-# 原始数据集位置
+HUGGINGFACE_CACHE_DIR = get_dir(DOWNLOADS_DIR / "huggingface")
+
+# Hugging Face 会在缓存目录中自动管理这些子目录
+HUGGINGFACE_DATASETS_DIR = get_dir(HUGGINGFACE_CACHE_DIR / "datasets")
+HUGGINGFACE_DOWNLOADS_DIR = get_dir(HUGGINGFACE_CACHE_DIR / "downloads")
+HUGGINGFACE_MODULES_DIR = get_dir(HUGGINGFACE_CACHE_DIR / "modules")
+
+# 项目接管后的数据目录
 RAW_DATASETS_DIR = get_dir(DATASETS_DIR / "raw")
-# 处理后数据集位置
-PROCESSED_DATASETS_DIR = get_dir(DATASETS_DIR / "processed")
-# 中间处理数据集位置
 INTERIM_DATASETS_DIR = get_dir(DATASETS_DIR / "interim")
+PROCESSED_DATASETS_DIR = get_dir(DATASETS_DIR / "processed")
+
+# OPUS-100 英中数据集配置
+OPUS100_DATASET_NAME = "Helsinki-NLP/opus-100"
+OPUS100_LANGUAGE_PAIR = "en-zh"
+OPUS100_DATASET_DIR_NAME = "opus100_en_zh"
+
+# 原始 JSONL 数据集文件
+RAW_OPUS100_DATASET_DIR = get_dir(RAW_DATASETS_DIR / OPUS100_DATASET_DIR_NAME)
+RAW_TRAIN_DATASET_PATH = RAW_OPUS100_DATASET_DIR / "train.jsonl"
+RAW_VAL_DATASET_PATH = RAW_OPUS100_DATASET_DIR / "validation.jsonl"
+RAW_TEST_DATASET_PATH = RAW_OPUS100_DATASET_DIR / "test.jsonl"
+
+# 中间处理 JSONL 数据集文件
+INTERIM_OPUS100_DATASET_DIR = get_dir(INTERIM_DATASETS_DIR / OPUS100_DATASET_DIR_NAME)
+INTERIM_TRAIN_DATASET_PATH = INTERIM_OPUS100_DATASET_DIR / "train.jsonl"
+INTERIM_VAL_DATASET_PATH = INTERIM_OPUS100_DATASET_DIR / "validation.jsonl"
+INTERIM_TEST_DATASET_PATH = INTERIM_OPUS100_DATASET_DIR / "test.jsonl"
+
+# 处理后 JSONL 数据集文件
+PROCESSED_OPUS100_DATASET_DIR = get_dir(
+    PROCESSED_DATASETS_DIR / OPUS100_DATASET_DIR_NAME
+)
+PROCESSED_TRAIN_DATASET_PATH = PROCESSED_OPUS100_DATASET_DIR / "train.jsonl"
+PROCESSED_VAL_DATASET_PATH = PROCESSED_OPUS100_DATASET_DIR / "validation.jsonl"
+PROCESSED_TEST_DATASET_PATH = PROCESSED_OPUS100_DATASET_DIR / "test.jsonl"
 
 # 产出位置
 OUTPUTS_DIR = get_dir(ROOT / "outputs")
@@ -32,17 +72,3 @@ FIGURES_DIR = get_dir(OUTPUTS_DIR / "figures")
 # 模型保存位置
 BEST_MODEL_PATH = CHECKPOINTS_DIR / "best_model.pth"
 LAST_MODEL_PATH = CHECKPOINTS_DIR / "last_model.pth"
-
-# 下载的数据集文件
-# DATASET_ZIP_PATH = DOWNLOADS_DIR / "THUCNews.zip"
-# THUCNEWS_RAW_DIR = RAW_DATASETS_DIR / "THUCNews"
-
-# 中间处理数据集文件
-INTERIM_TRAIN_DATASET_PATH = INTERIM_DATASETS_DIR / "train.txt"
-INTERIM_VAL_DATASET_PATH = INTERIM_DATASETS_DIR / "val.txt"
-INTERIM_TEST_DATASET_PATH = INTERIM_DATASETS_DIR / "test.txt"
-
-# 处理后数据集文件
-PROCESSED_TRAIN_DATASET_PATH = PROCESSED_DATASETS_DIR / "train_processed.txt"
-PROCESSED_VAL_DATASET_PATH = PROCESSED_DATASETS_DIR / "val_processed.txt"
-PROCESSED_TEST_DATASET_PATH = PROCESSED_DATASETS_DIR / "test_processed.txt"
