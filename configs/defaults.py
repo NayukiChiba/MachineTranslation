@@ -52,3 +52,19 @@ class TokenizerConfig:
     UNK_TOKEN: str = "<unk>"
     BOS_TOKEN: str = "<bos>"
     EOS_TOKEN: str = "<eos>"
+
+
+class DataLoaderConfig:
+    """DataLoader 默认配置"""
+
+    # 默认 batch 大小，先用较保守的值，避免显存压力过大
+    BATCH_SIZE: int = 32
+
+    # Windows 下多进程 DataLoader 容易引入额外复杂度，默认先用单进程
+    NUM_WORKERS: int = 0
+
+    # 默认自动准备数据管线，保证 clone 项目后能直接获取 DataLoader
+    AUTO_PREPARE: bool = True
+
+    # 默认不强制重跑管线，避免重复下载和重复训练分词器
+    FORCE_PREPARE: bool = False

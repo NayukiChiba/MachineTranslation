@@ -21,7 +21,7 @@ from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
 
 from configs import paths
-from configs.defaults import TokenizerConfig
+from configs.defaults import DataLoaderConfig, TokenizerConfig
 
 
 def files_exist(file_paths: list[Path]) -> bool:
@@ -241,10 +241,10 @@ def collate_batch(
 
 def create_dataloader(
     file_path: Path,
-    batch_size: int,
+    batch_size: int = DataLoaderConfig.BATCH_SIZE,
     pad_id: int = TokenizerConfig.PAD_ID,
     shuffle: bool = False,
-    num_workers: int = 0,
+    num_workers: int = DataLoaderConfig.NUM_WORKERS,
 ) -> DataLoader:
     """
     创建单个 DataLoader
@@ -271,11 +271,11 @@ def create_dataloader(
 
 
 def create_dataloaders(
-    batch_size: int,
+    batch_size: int = DataLoaderConfig.BATCH_SIZE,
     pad_id: int = TokenizerConfig.PAD_ID,
-    num_workers: int = 0,
-    auto_prepare: bool = True,
-    force_prepare: bool = False,
+    num_workers: int = DataLoaderConfig.NUM_WORKERS,
+    auto_prepare: bool = DataLoaderConfig.AUTO_PREPARE,
+    force_prepare: bool = DataLoaderConfig.FORCE_PREPARE,
 ) -> tuple[DataLoader, DataLoader, DataLoader]:
     """
     创建 train / validation / test 三个 DataLoader
@@ -320,7 +320,7 @@ def create_dataloaders(
 
 def main() -> None:
     """主函数：检查 DataLoader 输出形状"""
-    _, validation_dataloader, _ = create_dataloaders(batch_size=4)
+    _, validation_dataloader, _ = create_dataloaders()
     batch = next(iter(validation_dataloader))
 
     for name, value in batch.items():
