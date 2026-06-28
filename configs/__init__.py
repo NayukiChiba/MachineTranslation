@@ -1,5 +1,5 @@
 """项目配置模块。"""
 
-from configs import paths
+from configs import defaults, paths
 
-__all__ = ["paths"]
+__all__ = ["defaults", "paths"]
