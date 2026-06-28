@@ -1,5 +1,5 @@
 """
-机器翻译数据编码模块
+生成 processed 数据集模块
 
 功能：
 1. 读取 interim JSONL 文本句对
@@ -7,7 +7,7 @@
 3. 保存为 processed JSONL，供训练阶段直接读取
 
 使用方法：
-    uv run -m src.data.encoding
+    uv run -m src.data.process
 """
 
 import json
@@ -87,7 +87,7 @@ def encode_translation_pair(
     }
 
 
-def encode_file(
+def process_file(
     input_path: Path,
     output_path: Path,
     tokenizer: SentencePieceTokenizer,
@@ -141,24 +141,24 @@ def encode_file(
     print("-" * 60)
 
 
-def encode_all_splits(tokenizer: SentencePieceTokenizer) -> None:
+def process_all_splits(tokenizer: SentencePieceTokenizer) -> None:
     """
     编码 train / validation / test 三个数据切分
 
     Args:
         tokenizer: SentencePiece 分词器
     """
-    encode_file(
+    process_file(
         paths.INTERIM_TRAIN_DATASET_PATH,
         paths.PROCESSED_TRAIN_DATASET_PATH,
         tokenizer,
     )
-    encode_file(
+    process_file(
         paths.INTERIM_VAL_DATASET_PATH,
         paths.PROCESSED_VAL_DATASET_PATH,
         tokenizer,
     )
-    encode_file(
+    process_file(
         paths.INTERIM_TEST_DATASET_PATH,
         paths.PROCESSED_TEST_DATASET_PATH,
         tokenizer,
@@ -168,7 +168,7 @@ def encode_all_splits(tokenizer: SentencePieceTokenizer) -> None:
 def main() -> None:
     """主函数：生成 processed 数据集"""
     tokenizer = SentencePieceTokenizer(paths.TOKENIZER_MODEL_PATH)
-    encode_all_splits(tokenizer)
+    process_all_splits(tokenizer)
 
 
 if __name__ == "__main__":

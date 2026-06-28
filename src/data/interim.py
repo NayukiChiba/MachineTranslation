@@ -1,6 +1,5 @@
 """
-src/data/preprocess.py
-中英文数据集预处理模块
+生成 interim 数据集模块
 
 功能:
 1. 读取 raw JSONL 数据
@@ -10,7 +9,7 @@ src/data/preprocess.py
 5. 保存到 interim JSONL 数据集
 
 使用方法:
-    uv run python -m src.data.preprocess
+    uv run -m src.data.interim
 """
 
 import json
@@ -141,9 +140,9 @@ def load_jsonl_item(line: str) -> dict[str, Any] | None:
         return None
 
 
-def preprocess_file(input_path: Path, output_path: Path) -> None:
+def create_interim_file(input_path: Path, output_path: Path) -> None:
     """
-    预处理单个 JSONL 文件
+    清洗单个 JSONL 文件
 
     Args:
         input_path: 输入 raw JSONL 文件路径
@@ -198,21 +197,21 @@ def preprocess_file(input_path: Path, output_path: Path) -> None:
 
 
 def main() -> None:
-    """预处理 OPUS-100 英中数据集"""
-    preprocess_file(
+    """清洗 OPUS-100 英中数据集"""
+    create_interim_file(
         paths.RAW_TRAIN_DATASET_PATH,
         paths.INTERIM_TRAIN_DATASET_PATH,
     )
-    preprocess_file(
+    create_interim_file(
         paths.RAW_VAL_DATASET_PATH,
         paths.INTERIM_VAL_DATASET_PATH,
     )
-    preprocess_file(
+    create_interim_file(
         paths.RAW_TEST_DATASET_PATH,
         paths.INTERIM_TEST_DATASET_PATH,
     )
 
-    print("OPUS-100 英中数据集预处理完成")
+    print("OPUS-100 英中数据集清洗完成")
 
 
 if __name__ == "__main__":

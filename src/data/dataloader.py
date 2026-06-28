@@ -8,7 +8,7 @@
 
 注意：
     本模块不做分词、不做清洗、不生成 mask。
-    这些样本在 src.data.encoding 中已经处理完毕。
+    这些样本在 src.data.process 中已经处理完毕。
 """
 
 import json
