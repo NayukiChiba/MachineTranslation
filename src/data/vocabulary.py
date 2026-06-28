@@ -5,7 +5,7 @@ SentencePiece 词表管理模块
 1. 从 tokenizer.model 加载 token 与 id 的对应关系
 2. 提供 token2id / id2token 查询接口
 3. 提供特殊 token id 属性
-4. 可选导出为 JSON，便于人工检查词表
+4. 使用 tokenizer.vocab 导出可读 JSON，便于人工检查词表
 
 说明：
     本项目使用 SentencePiece 作为分词器，因此不再手写 vocab.json
@@ -18,6 +18,78 @@ from pathlib import Path
 import sentencepiece as spm
 
 from configs import paths
+
+
+def load_sentencepiece_vocab(vocab_path: Path) -> list[dict[str, float | int | str]]:
+    """
+    读取 SentencePiece 生成的 tokenizer.vocab 文件
+
+    Args:
+        vocab_path: tokenizer.vocab 文件路径
+
+    Returns:
+        list[dict[str, float | int | str]]: 带 id、token、score 的词表列表
+    """
+    vocab_items: list[dict[str, float | int | str]] = []
+
+    with vocab_path.open("r", encoding="utf-8") as vocab_file:
+        for token_id, line in enumerate(vocab_file):
+            line = line.rstrip("\n")
+
+            if not line:
+                continue
+
+            parts = line.split("\t")
+            token = parts[0]
+            score = float(parts[1]) if len(parts) > 1 else 0.0
+
+            vocab_items.append(
+                {
+                    "id": token_id,
+                    "token": token,
+                    "score": score,
+                }
+            )
+
+    return vocab_items
+
+
+def build_vocab_json_data(vocab_path: Path) -> dict[str, object]:
+    """
+    构建双向词表 JSON 数据
+
+    Args:
+        vocab_path: tokenizer.vocab 文件路径
+
+    Returns:
+        dict[str, object]: 包含 token2id、id2token、scores、items 的词表数据
+    """
+    vocab_items = load_sentencepiece_vocab(vocab_path)
+
+    token2id = {str(item["token"]): int(item["id"]) for item in vocab_items}
+    id2token = {str(item["id"]): str(item["token"]) for item in vocab_items}
+    scores = {str(item["token"]): float(item["score"]) for item in vocab_items}
+
+    return {
+        "token2id": token2id,
+        "id2token": id2token,
+        "scores": scores,
+        "items": vocab_items,
+    }
+
+
+def save_sentencepiece_vocab_json(vocab_path: Path, output_path: Path) -> None:
+    """
+    将 tokenizer.vocab 转换为 JSON 文件
+
+    Args:
+        vocab_path: tokenizer.vocab 文件路径
+        output_path: 输出 JSON 文件路径
+    """
+    vocab_data = build_vocab_json_data(vocab_path)
+
+    with output_path.open("w", encoding="utf-8") as output_file:
+        json.dump(vocab_data, output_file, ensure_ascii=False, indent=2)
 
 
 class Vocabulary:
@@ -127,6 +199,10 @@ class Vocabulary:
 def main() -> None:
     """打印词表基础信息"""
     vocabulary = Vocabulary(paths.TOKENIZER_MODEL_PATH)
+    save_sentencepiece_vocab_json(
+        paths.TOKENIZER_VOCAB_PATH,
+        paths.TOKENIZER_VOCAB_JSON_PATH,
+    )
 
     print(f"词表大小: {vocabulary.vocab_size}")
     print(f"pad_id: {vocabulary.pad_id}")
@@ -138,6 +214,8 @@ def main() -> None:
     for token_id in range(min(20, vocabulary.vocab_size)):
         token = vocabulary.id2token(token_id)
         print(f"{token_id}: {token}")
+
+    print(f"词表 JSON: {paths.TOKENIZER_VOCAB_JSON_PATH}")
 
 
 if __name__ == "__main__":
