@@ -12,32 +12,11 @@
 
 import json
 from pathlib import Path
-from typing import Any
 
 from configs import paths
 from configs.defaults import DataConfig
 from src.data.tokenizer import SentencePieceTokenizer
-
-
-def load_jsonl_item(line: str) -> dict[str, Any] | None:
-    """
-    解析一行 JSONL
-
-    Args:
-        line: JSONL 单行文本
-
-    Returns:
-        dict[str, Any] | None: 解析后的字典，解析失败返回 None
-    """
-    line = line.strip()
-
-    if not line:
-        return None
-
-    try:
-        return json.loads(line)
-    except json.JSONDecodeError:
-        return None
+from src.data.utils import load_jsonl_item
 
 
 def truncate_token_ids(token_ids: list[int], max_length: int) -> list[int]:

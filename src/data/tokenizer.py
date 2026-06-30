@@ -10,35 +10,14 @@ SentencePiece 分词器训练与加载模块
     uv run python -m src.data.tokenizer
 """
 
-import json
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Iterable
 
 import sentencepiece as spm
 
 from configs import paths
 from configs.defaults import TokenizerConfig
-
-
-def load_jsonl_item(line: str) -> dict[str, Any] | None:
-    """
-    加载单行 JSONL 数据
-
-    Args:
-        line: JSONL 单行文本
-
-    Returns:
-        dict[str, Any] | None: 解析后的数据，失败返回 None
-    """
-    line = line.strip()
-
-    if not line:
-        return None
-
-    try:
-        return json.loads(line)
-    except json.JSONDecodeError:
-        return None
+from src.data.utils import load_jsonl_item
 
 
 def iter_parallel_texts(input_path: Path) -> Iterable[str]:

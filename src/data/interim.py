@@ -15,10 +15,10 @@
 import json
 import re
 from pathlib import Path
-from typing import Any
 
 from configs import paths
 from configs.defaults import DataConfig
+from src.data.utils import load_jsonl_item
 
 
 def normalize_english_text(text: str) -> str:
@@ -117,27 +117,6 @@ def is_valid_sample(english_text: str, chinese_text: str) -> bool:
         return False
 
     return True
-
-
-def load_jsonl_item(line: str) -> dict[str, Any] | None:
-    """
-    加载单行 JSONL 数据
-
-    Args:
-        line: JSONL 单行文本
-
-    Returns:
-        dict[str, Any] | None: 解析后的数据，失败返回 None
-    """
-    line = line.strip()
-
-    if not line:
-        return None
-
-    try:
-        return json.loads(line)
-    except json.JSONDecodeError:
-        return None
 
 
 def create_interim_file(input_path: Path, output_path: Path) -> None:

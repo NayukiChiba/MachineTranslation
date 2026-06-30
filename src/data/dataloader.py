@@ -12,9 +12,7 @@
     如果缺失，会自动执行 raw -> interim -> tokenizer -> processed 管线。
 """
 
-import json
 from pathlib import Path
-from typing import Any
 
 import torch
 from torch import Tensor
@@ -22,6 +20,7 @@ from torch.utils.data import DataLoader, Dataset
 
 from configs import paths
 from configs.defaults import DataLoaderConfig, TokenizerConfig
+from src.data.utils import load_jsonl_item
 
 
 def files_exist(file_paths: list[Path]) -> bool:
@@ -95,27 +94,6 @@ def prepare_data_pipeline(force: bool = False) -> None:
 
         tokenizer = SentencePieceTokenizer(paths.TOKENIZER_MODEL_PATH)
         process_all_splits(tokenizer)
-
-
-def load_jsonl_item(line: str) -> dict[str, Any] | None:
-    """
-    解析一行 JSONL
-
-    Args:
-        line: JSONL 单行文本
-
-    Returns:
-        dict[str, Any] | None: 解析后的字典，解析失败返回 None
-    """
-    line = line.strip()
-
-    if not line:
-        return None
-
-    try:
-        return json.loads(line)
-    except json.JSONDecodeError:
-        return None
 
 
 def load_samples(file_path: Path) -> list[dict[str, list[int]]]:
