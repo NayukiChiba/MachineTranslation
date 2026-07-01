@@ -47,10 +47,14 @@ MachineTranslation/
 │   ├── cli/                     # 命令行入口
 │   │   ├── __init__.py
 │   │   └── main.py
-│   ├── data/                    # 数据读取、清洗、分词、词表构建
+│   ├── data/                    # 数据下载、清洗、分词、词表构建、DataLoader
 │   │   ├── __init__.py
-│   │   ├── dataset_builder.py
+│   │   ├── dataloader.py
+│   │   ├── download.py
+│   │   ├── interim.py
+│   │   ├── process.py
 │   │   ├── tokenizer.py
+│   │   ├── utils.py
 │   │   └── vocabulary.py
 │   ├── evaluate/                # 评估流程和指标统计
 │   │   ├── __init__.py
@@ -95,13 +99,15 @@ MachineTranslation/
 
 ### `data`
 
-负责把平行语料转换为模型可用的张量输入。
+负责完整的机器翻译数据管线：从原始语料下载到模型可用的张量输入。
 
-- 读取中英或其他语言对的平行文本
-- 清洗空行、异常字符和过长句子
-- 构建源语言和目标语言词表
-- 处理 `<pad>`、`<unk>`、`<bos>`、`<eos>` 等特殊符号
-- 生成训练集、验证集和测试集
+- `download.py` — 从 Hugging Face 缓存导出 OPUS-100 中英数据集到 raw JSONL
+- `interim.py` — 清洗中英文文本、过滤无效样本、去重，生成 interim JSONL
+- `tokenizer.py` — 训练 SentencePiece BPE 分词器，提供 encode / decode 接口
+- `vocabulary.py` — 词表查询与检查（token2id / id2token / 特殊 token）
+- `process.py` — 使用分词器将 interim 文本转为 token id，生成 processed JSONL
+- `dataloader.py` — 读取 processed JSONL，batch 级 padding，导出 DataLoader
+- `utils.py` — data 管线通用工具（JSONL 解析等）
 
 ### `evaluate`
 
