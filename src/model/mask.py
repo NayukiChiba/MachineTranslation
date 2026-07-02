@@ -48,7 +48,7 @@ def create_padding_mask(x: Tensor, pad_id: int) -> Tensor:
     return padding_mask
 
 
-def create_causal_mask(seq_length: int, device: torch.device | None = None) -> Tensor:
+def create_causal_mask(seq_length: int) -> Tensor:
     """
     生成 causal (上三角) mask,用于 decoder 自注意力
 
@@ -81,7 +81,7 @@ def create_causal_mask(seq_length: int, device: torch.device | None = None) -> T
     #   1. torch.ones(seq_length, seq_length) 或用 torch.triu
     causal_mask = torch.ones(seq_length, seq_length)
     #   2. triu(diagonal=1) → 上三角为 1(mask 掉未来位置)
-    causal_mask = torch.triu(diagonal=1)
+    causal_mask = torch.triu(causal_mask, diagonal=1)
     #   3. 转为 bool
     causal_mask = causal_mask.bool()
     #   4. unsqueeze(0).unsqueeze(0) → shape (1, 1, seq_length, seq_length)
@@ -112,5 +112,9 @@ def create_combined_mask(
     提示:
         直接调用上面的 create_padding_mask 和 create_causal_mask 组合即可.
     """
-    # TODO: 组合调用 create_padding_mask + create_causal_mask
-    raise NotImplementedError("TODO: 实现 create_combined_mask")
+    # 组合调用 create_padding_mask + create_causal_mask
+    source_padding_mask = create_padding_mask(x=source, pad_id=pad_id)
+    target_padding_mask = create_padding_mask(x=target, pad_id=pad_id)
+    target_causal_mask = create_causal_mask(seq_length=target.size(1))
+    cross_mask = source_padding_mask
+    return source_padding_mask, target_padding_mask, target_causal_mask, cross_mask
