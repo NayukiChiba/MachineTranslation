@@ -98,7 +98,6 @@ class PositionalEncoding(nn.Module):
         self, hidden_dim: int, dropout: float = 0.1, max_length: int = 5000
     ) -> None:
         super().__init__()
-        # TODO: 初始化
         # 步骤:
         #   1. 创建 nn.Dropout(dropout)
         self.dropout = nn.Dropout(dropout)
@@ -135,7 +134,6 @@ class PositionalEncoding(nn.Module):
         Returns:
             Tensor: shape = (batch, seq_length, hidden_dim)
         """
-        # TODO: 实现 forward
         # 步骤:
         #   1. seq_length = x.size(1)
         seq_length = x.size(1)
