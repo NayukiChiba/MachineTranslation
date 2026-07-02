@@ -86,12 +86,10 @@ class TransformerEncoderLayer(nn.Module):
         #      结构: Linear(d_model, d_feedforward) → ReLU → Dropout → Linear(d_feedforward, d_model)
         #      提示: 用 nn.Sequential 组合
         self.feed_forward = nn.Sequential(
-            [
-                nn.Linear(d_model, d_feedforward),
-                nn.ReLU(),
-                nn.Dropout(dropout),
-                nn.Linear(d_feedforward, d_model),
-            ]
+            nn.Linear(d_model, d_feedforward),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(d_feedforward, d_model),
         )
         #   3. self.norm1, self.norm2 — 两个 LayerNorm
         #      提示: nn.LayerNorm(d_model)
