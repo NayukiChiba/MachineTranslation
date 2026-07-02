@@ -24,29 +24,23 @@
 
 ```text
 MachineTranslation/
-├── configs/                     # 训练、数据、模型配置
-│   ├── base_config.py
-│   ├── data_config.py
-│   └── train_config.py
-├── data/                        # 小样例数据，可提交到仓库
-│   └── samples/
-├── datasets/                    # 原始和处理后的完整数据集，不提交
-│   ├── raw/
-│   └── processed/
-├── docs/                        # 设计说明和实验记录
-│   ├── attention.md
-│   └── transformer.md
+├── main.py
+├── configs/
+│   ├── __init__.py
+│   ├── paths.py                 # 路径常量
+│   └── defaults.py              # 默认超参数
 ├── notebooks/                   # 探索性实验和可视化分析
 ├── outputs/                     # 模型权重、预测结果和图表，不提交
 │   ├── checkpoints/
 │   ├── logs/
-│   ├── tensorboard/
 │   ├── figures/
 │   └── predictions/
 ├── src/
+│   ├── __init__.py
 │   ├── cli/                     # 命令行入口
 │   │   ├── __init__.py
-│   │   └── main.py
+│   │   ├── parser.py
+│   │   └── menu.py
 │   ├── data/                    # 数据下载、清洗、分词、词表构建、DataLoader
 │   │   ├── __init__.py
 │   │   ├── dataloader.py
@@ -58,29 +52,34 @@ MachineTranslation/
 │   │   └── vocabulary.py
 │   ├── evaluate/                # 评估流程和指标统计
 │   │   ├── __init__.py
-│   │   ├── evaluator.py
 │   │   └── metrics.py
+│   │   ├── visualize.py
+│   │   └── evaluator.py
 │   ├── inference/               # 模型加载和翻译接口
 │   │   ├── __init__.py
 │   │   └── translator.py
-│   ├── model/                   # 模型结构
+│   ├── model/                   # Transformer 模型
 │   │   ├── __init__.py
-│   │   ├── attention.py
+│   │   ├── embedding.py
+│   │   ├── mask.py
 │   │   ├── encoder.py
 │   │   ├── decoder.py
-│   │   ├── seq2seq.py
 │   │   └── transformer.py
 │   ├── train/                   # 训练循环、损失和优化器
 │   │   ├── __init__.py
+│   │   ├── optimizer.py
+│   │   ├── scheduler.py
+│   │   ├── early_stopping.py
+│   │   ├── checkpoint.py
+│   │   ├── logger.py
+│   │   ├── utils.py
 │   │   └── trainer.py
-│   ├── utils/                   # 通用工具，保持克制使用
-│   │   ├── __init__.py
-│   │   ├── seed_manager.py
-│   │   └── path_manager.py
 ├── tests/                       # 单元测试和轻量集成测试
-│   ├── test_attention.py
+│   ├── test_tokenizer.py
 │   ├── test_vocabulary.py
-│   └── test_translator.py
+│   ├── test_dataset.py
+│   ├── test_mask.py
+│   └── test_transformer.py
 ├── .pre-commit-config.yaml
 ├── pyproject.toml
 └── README.md
@@ -113,10 +112,9 @@ MachineTranslation/
 
 负责独立评估流程和指标统计。
 
-- 加载 checkpoint 和测试集
-- 计算 loss、accuracy、BLEU 等指标
-- 保存评估报告
-- 输出错误样例，辅助分析模型问题
+- `metrics.py` — 计算 loss、token accuracy、轻量 BLEU
+- `evaluator.py` — 统一评估入口，返回结构化指标
+- `visualize.py` — 保存 loss 曲线和预测样例
 
 ### `inference`
 
@@ -131,30 +129,23 @@ MachineTranslation/
 
 负责模型结构实现，是本项目的核心模块。
 
-- `attention.py`：手写点积注意力、缩放点积注意力、多头注意力
+- `embedding.py`：TokenEmbedding 与 PositionalEncoding
+- `mask.py`：padding mask 与 causal mask
 - `encoder.py`：编码器结构
 - `decoder.py`：解码器结构
-- `seq2seq.py`：带 Attention 的 Seq2Seq 模型
 - `transformer.py`：完整 Transformer 翻译模型
 
 ### `train`
 
 负责训练流程。
 
-- 训练循环
-- 验证集 loss 统计
-- checkpoint 保存和加载
-- 损失函数和优化器构建
-- 随机种子和设备选择
-
-### `utils`
-
-负责少量跨模块复用的基础工具。
-
-- 路径管理
-- 随机种子设置
-- 配置读取
-- 日志初始化
+- `optimizer.py` — 创建优化器
+- `scheduler.py` — 创建学习率调度器
+- `early_stopping.py` — 验证集无提升时提前停止
+- `checkpoint.py` — 保存和加载 checkpoint
+- `logger.py` — 控制台和文件日志
+- `utils.py` — 随机种子、设备、参数统计、梯度裁剪
+- `trainer.py` — 训练主循环，作为唯一调度者
 
 ## 建议实现顺序
 
