@@ -18,26 +18,7 @@ Transformer Encoder 模块
 import torch.nn as nn
 from torch import Tensor
 
-# =============================================================================
-# TODO: 如果你想把 MultiHeadAttention 抽出来复用(encoder/decoder 都用到),
-#       建议在 model/ 下新建一个 attention.py.
-#       这里先用占位注释标出需要的接口,你在 encoder.py 中可以直接
-#       使用 nn.MultiheadAttention(PyTorch 内置)或手写一个.
-#
-#   PyTorch 内置用法提示:
-#       self.self_attention = nn.MultiheadAttention(
-#           embed_dim=d_model, num_heads=num_heads,
-#           dropout=dropout, batch_first=True
-#       )
-#       调用: attention_output, attention_weights = self.self_attention(x, x, x, key_padding_mask=...)
-#
-#   手写提示(如果你想从零实现):
-#       - Q = x @ W_q, K = x @ W_k, V = x @ W_v
-#       - scores = Q @ K^T / sqrt(d_k)
-#       - scores.masked_fill(mask, -1e9)
-#       - attention = softmax(scores) @ V
-#       - 最后过一个线性层 W_o
-# =============================================================================
+from configs.defaults import ModelConfig
 
 
 class TransformerEncoderLayer(nn.Module):
@@ -71,15 +52,20 @@ class TransformerEncoderLayer(nn.Module):
     """
 
     def __init__(
-        self, d_model: int, num_heads: int, d_feedforward: int, dropout: float = 0.1
+        self,
+        d_model: int = ModelConfig.d_model,
+        num_heads: int = ModelConfig.num_heads,
+        d_feedforward: int = ModelConfig.d_feedforward,
+        dropout: float = ModelConfig.dropout,
+        norm_first: str = ModelConfig.norm_first,
     ) -> None:
         super().__init__()
         # 初始化各个子层
         # 需要创建:
-        #   1. self.self_attention — 多头自注意力
+        #   1. self.multi_head_attention — 多头自注意力
         #      提示: nn.MultiheadAttention(embed_dim=d_model, num_heads=num_heads,
         #              dropout=dropout, batch_first=True)
-        self.nulti_head_attention = nn.MultiheadAttention(
+        self.multi_head_attention = nn.MultiheadAttention(
             embed_dim=d_model, num_heads=num_heads, dropout=dropout, batch_first=True
         )
         #   2. self.feedforward — 前馈网络
@@ -98,6 +84,7 @@ class TransformerEncoderLayer(nn.Module):
         #   4. self.dropout — 公用 Dropout
         #      提示: nn.Dropout(dropout)
         self.dropout = nn.Dropout(dropout)
+        self.norm_first = norm_first
 
     def forward(self, x: Tensor, source_padding_mask: Tensor | None = None) -> Tensor:
         """
@@ -108,27 +95,34 @@ class TransformerEncoderLayer(nn.Module):
         Returns:
             Tensor: shape = (batch, source_length, d_model)
         """
-        # TODO: 实现 EncoderLayer 的 forward
-        # 步骤(严格按照 Pre-LN 或 Post-LN 选一种,保持一致):
-        #
-        # [Post-LN 风格(Transformer 原论文)]:
-        #   1. attention_output, _ = self.self_attention(x, x, x, key_padding_mask=source_padding_mask)
-        #   2. x = self.norm1(x + self.dropout(attention_output))
-        #   3. feedforward_output = self.feedforward(x)
-        #   4. x = self.norm2(x + self.dropout(feedforward_output))
-        #   5. return x
-        #
-        # [Pre-LN 风格(更稳定,推荐)]:
-        #   1. residual = x
-        #   2. x = self.norm1(x)
-        #   3. attention_output, _ = self.self_attention(x, x, x, key_padding_mask=source_padding_mask)
-        #   4. x = residual + self.dropout(attention_output)
-        #   5. residual = x
-        #   6. x = self.norm2(x)
-        #   7. feedforward_output = self.feedforward(x)
-        #   8. x = residual + self.dropout(feedforward_output)
-        #   9. return x
-        raise NotImplementedError("TODO: 实现 TransformerEncoderLayer.forward")
+        # Post-LN 是原始论文中的
+        # temp = LN(input + Attention(input))
+        # y = LN(temp + FFN(temp))
+        if self.norm_first == "post":
+            attention_output, _ = self.multi_head_attention(
+                query=x, key=x, value=x, key_padding_mask=source_padding_mask
+            )
+            x = self.norm1(x + self.dropout(attention_output))
+            x = self.norm2(x + self.dropout(self.feed_forward(x)))
+            return x
+
+        # Pre-LN 更加稳定
+        # temp = input + Attention(LN(input))
+        # output = temp + FFN(LN(temp))
+        if self.norm_first == "pre":
+            x_normed = self.norm1(x)
+            attention_output, _ = self.multi_head_attention(
+                query=x_normed,
+                key=x_normed,
+                value=x_normed,
+                key_padding_mask=source_padding_mask,
+            )
+            x = x + self.dropout(attention_output)
+
+            # feed forward
+            x = x + self.dropout(self.feed_forward(self.norm2(x)))
+
+            return x
 
 
 class TransformerEncoder(nn.Module):
