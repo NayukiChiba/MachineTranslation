@@ -76,13 +76,13 @@ class ModelConfig:
     """Transformer 模型默认配置"""
 
     # 模型隐藏维度，embedding、attention 和前馈网络输入输出都使用该维度
-    hidden_dim: int = 512
+    d_model: int = 512
 
-    # 多头注意力的头数，必须能整除 hidden_dim
+    # 多头注意力的头数，必须能整除 d_model
     attention_head_count: int = 8
 
-    # 前馈网络中间层维度，通常是 hidden_dim 的 4 倍
-    feedforward_dim: int = 2048
+    # 前馈网络中间层维度，通常是 d_model 的 4 倍
+    d_feedforward: int = 2048
 
     # Encoder 和 Decoder 的堆叠层数
     encoder_layer_count: int = 6
