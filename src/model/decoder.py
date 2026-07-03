@@ -41,7 +41,7 @@ class TransformerDecoderLayer(nn.Module):
         dropout (float): dropout 概率, 通常 0.1
         norm_first (str): LayerNorm 放置策略, "pre" 或 "post"
 
-    输入:
+    Input:
         x (Tensor): Decoder 输入, shape = (batch, target_length, d_model)
         encoder_output (Tensor): Encoder 输出, shape = (batch, source_length, d_model)
         target_padding_mask (Tensor | None): target 序列 padding mask,
@@ -51,7 +51,7 @@ class TransformerDecoderLayer(nn.Module):
         source_padding_mask (Tensor | None): source 序列 padding mask,
             shape = (batch, source_length), True 表示 <pad>
 
-    输出:
+    Returns:
         Tensor: shape = (batch, target_length, d_model)
 
     使用示例:
@@ -75,29 +75,43 @@ class TransformerDecoderLayer(nn.Module):
         norm_first: str = ModelConfig.norm_first,
     ) -> None:
         super().__init__()
-        # =========================================================================
-        # TODO: 初始化各个子层
         # 需要创建:
         #   1. self.self_attention — Masked 多头自注意力
         #      提示: nn.MultiheadAttention(embed_dim=d_model, num_heads=num_heads,
         #              dropout=dropout, batch_first=True)
         #      注意: causal mask 在 forward 中通过 attn_mask 参数传入,
         #            不能写在 __init__ 里, 因为每个 batch 的 target 长度可能不同
+        self.multi_head_attention = nn.MultiheadAttention(
+            embed_dim=d_model, num_heads=num_heads, dropout=dropout, batch_first=True
+        )
         #   2. self.cross_attention — 交叉注意力(Decoder → Encoder)
         #      提示: nn.MultiheadAttention(embed_dim=d_model, num_heads=num_heads,
         #              dropout=dropout, batch_first=True)
         #      Q 来自 Decoder, K/V 来自 Encoder 输出
+        self.cross_attention = nn.MultiheadAttention(
+            embed_dim=d_model, num_heads=num_heads, dropout=dropout, batch_first=True
+        )
         #   3. self.feed_forward — 前馈网络
         #      结构: Linear(d_model, d_feedforward) → ReLU → Dropout
         #           → Linear(d_feedforward, d_model)
         #      提示: 用 nn.Sequential 组合, 与 Encoder 中完全一致
+        self.feed_forward = nn.Sequential(
+            nn.Linear(d_model, d_feedforward),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(d_feedforward, d_model),
+        )
         #   4. self.norm1, self.norm2, self.norm3 — 三个 LayerNorm
         #      (比 Encoder 多一个, 因为多了 Cross-Attention 子层)
         #      提示: nn.LayerNorm(d_model)
+        self.norm1 = nn.LayerNorm(d_model)
+        self.norm2 = nn.LayerNorm(d_model)
+        self.norm3 = nn.LayerNorm(d_model)
         #   5. self.dropout — 公用 Dropout
         #      提示: nn.Dropout(dropout)
+        self.dropout = nn.Dropout(dropout)
         #   6. self.norm_first — 记录 LayerNorm 放置策略
-        raise NotImplementedError("TODO: 实现 TransformerDecoderLayer.__init__")
+        self.norm_first = norm_first
 
     def forward(
         self,
@@ -123,33 +137,45 @@ class TransformerDecoderLayer(nn.Module):
             Tensor: shape = (batch, target_length, d_model)
         """
         # =========================================================================
-        # TODO: 实现 DecoderLayer 的 forward
-        #
         # 整体结构(三层子层, 比 Encoder 多一个 Cross-Attention):
-        #
-        # [Post-LN 风格]:
-        #   1. Self-Attention(带 causal mask):
-        #      attention_output, _ = self.self_attention(
-        #          query=x, key=x, value=x,
-        #          attn_mask=target_causal_mask,      ← 防止看到未来 token
-        #          key_padding_mask=target_padding_mask ← 忽略 <pad>
-        #      )
-        #      x = self.norm1(x + self.dropout(attention_output))
-        #
-        #   2. Cross-Attention(Q=Decoder, K/V=Encoder):
-        #      cross_output, _ = self.cross_attention(
-        #          query=x,                            ← Decoder 当前状态
-        #          key=encoder_output,                  ← Encoder 输出
-        #          value=encoder_output,                ← Encoder 输出
-        #          key_padding_mask=source_padding_mask  ← 忽略 source <pad>
-        #      )
-        #      x = self.norm2(x + self.dropout(cross_output))
-        #
-        #   3. FeedForward:
-        #      ff_output = self.feed_forward(x)
-        #      x = self.norm3(x + self.dropout(ff_output))
-        #
-        #   4. return x
+        if self.norm_first == "post":
+            # [Post-LN 风格]:
+            #   1. Self-Attention(带 causal mask):
+            #      attention_output, _ = self.self_attention(
+            #          query=x, key=x, value=x,
+            #          attn_mask=target_causal_mask,      ← 防止看到未来 token
+            #          key_padding_mask=target_padding_mask ← 忽略 <pad>
+            #      )
+            #      x = self.norm1(x + self.dropout(attention_output))
+            attention_output, _ = self.multi_head_attention(
+                query=x,
+                key=x,
+                value=x,
+                attn_mask=target_causal_mask,  # 防止看到未来token
+                key_padding_mask=target_padding_mask,  # 忽略 <pad>
+            )
+            #   2. Cross-Attention(Q=Decoder, K/V=Encoder):
+            #      cross_output, _ = self.cross_attention(
+            #          query=x,                            ← Decoder 当前状态
+            #          key=encoder_output,                  ← Encoder 输出
+            #          value=encoder_output,                ← Encoder 输出
+            #          key_padding_mask=source_padding_mask  ← 忽略 source <pad>
+            #      )
+            #      x = self.norm2(x + self.dropout(cross_output))
+            cross_output, _ = self.cross_attention(
+                query=x,
+                key=encoder_output,  # Encoder输出
+                value=encoder_output,  # Encoder输出
+                key_padding_mask=source_padding_mask,
+            )
+            x = self.norm2(x + self.dropout(cross_output))
+            #   3. FeedForward:
+            #      ff_output = self.feed_forward(x)
+            #      x = self.norm3(x + self.dropout(ff_output))
+            feedforward_output = self.feed_forward(x)
+            x = self.norm3(x + self.dropout(feedforward_output))
+            #   4. return x
+            return x
         #
         # [Pre-LN 风格(推荐, 更稳定)]:
         #   1. Self-Attention:
@@ -175,12 +201,32 @@ class TransformerDecoderLayer(nn.Module):
         #      x = x + self.dropout(self.feed_forward(self.norm3(x)))
         #
         #   4. return x
-        #
+        if self.norm_first == "pre":
+            x_normed = self.norm1(x)
+            attention_output, _ = self.multi_head_attention(
+                query=x_normed,
+                key=x_normed,
+                value=x_normed,
+                attn_mask=target_causal_mask,
+                key_padding_mask=target_padding_mask,
+            )
+            x = x + self.dropout(attention_output)
+
+            x_normed = self.norm2(x)
+            cross_output, _ = self.cross_attention(
+                query=x_normed,
+                key=encoder_output,
+                value=encoder_output,
+                key_padding_mask=source_padding_mask,
+            )
+            x = x + self.dropout(cross_output)
+
+            x = x + self.dropout(self.feed_forward(self.norm3(x)))
+            return x
         # 关键区别:
         #   - Self-Attention 多了 attn_mask=target_causal_mask, 防止 decoder 看到未来 token
         #   - Cross-Attention 的 K/V 来自 encoder_output, 不是 x
         #   - 比 Encoder 多一层 LayerNorm(norm3), 因为多了一个子层
-        raise NotImplementedError("TODO: 实现 TransformerDecoderLayer.forward")
 
 
 class TransformerDecoder(nn.Module):
