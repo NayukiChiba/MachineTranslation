@@ -13,8 +13,10 @@ Mask 生成模块
 import torch
 from torch import Tensor
 
+from configs.defaults import TokenizerConfig
 
-def create_padding_mask(x: Tensor, pad_id: int) -> Tensor:
+
+def create_padding_mask(x: Tensor, pad_id: int = TokenizerConfig.pad_id) -> Tensor:
     """
     为输入序列生成 padding mask
 
@@ -92,7 +94,7 @@ def create_causal_mask(seq_length: int) -> Tensor:
 def create_combined_mask(
     source: Tensor,
     target: Tensor,
-    pad_id: int,
+    pad_id: int = TokenizerConfig.pad_id,
 ) -> tuple[Tensor, Tensor, Tensor, Tensor]:
     """
     同时生成训练时所需的全部 mask

@@ -7,6 +7,8 @@ configs/defaults.py
 2. 后续扩展模型和训练默认参数
 """
 
+from typing import Literal
+
 import torch
 
 
@@ -79,7 +81,7 @@ class ModelConfig:
     d_model: int = 512
 
     # 多头注意力的头数，必须能整除 d_model
-    attention_head_count: int = 8
+    num_heads: int = 8
 
     # 前馈网络中间层维度，通常是 d_model 的 4 倍
     d_feedforward: int = 2048
@@ -92,7 +94,10 @@ class ModelConfig:
     dropout: float = 0.1
 
     # 位置编码支持的最大序列长度
-    max_sequence_length: int = 5000
+    max_seq_length: int = 5000
+
+    # LayerNorm的放置策略
+    norm_first: Literal["pre", "post"] = "pre"
 
 
 class TrainConfig:

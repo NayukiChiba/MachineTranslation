@@ -17,6 +17,8 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
+from configs.defaults import ModelConfig, TokenizerConfig
+
 
 class TokenEmbedding(nn.Module):
     """
@@ -43,7 +45,12 @@ class TokenEmbedding(nn.Module):
         torch.Size([2, 3, 512])
     """
 
-    def __init__(self, vocab_size: int, d_model: int, pad_id: int) -> None:
+    def __init__(
+        self,
+        vocab_size: int = TokenizerConfig.vocab_size,
+        d_model: int = ModelConfig.d_model,
+        pad_id: int = TokenizerConfig.pad_id,
+    ) -> None:
         super().__init__()
         # 初始化 nn.Embedding(vocab_size, d_model, padding_idx=pad_id)
         # 提示: padding_idx 参数会让 <pad> 的 embedding 始终为 0,且不参与梯度更新
@@ -58,7 +65,7 @@ class TokenEmbedding(nn.Module):
         Returns:
             Tensor: shape = (batch, seq_length, d_model)
         """
-        # TODO: 实现 forward
+        # 实现 forward
         # 步骤:
         #   1. self.embedding(x) → shape (batch, seq_length, d_model)
         x = self.embedding(x)
@@ -78,7 +85,7 @@ class PositionalEncoding(nn.Module):
     Args:
         d_model (int): 模型隐藏维度
         dropout (float): dropout 概率
-        max_length (int): 支持的最大序列长度,默认 5000
+        max_seq_length (int): 支持的最大序列长度,默认 5000
 
     输入:
         x: token embedding 输出,shape = (batch, seq_length, d_model)
@@ -95,19 +102,22 @@ class PositionalEncoding(nn.Module):
     """
 
     def __init__(
-        self, d_model: int, dropout: float = 0.1, max_length: int = 5000
+        self,
+        d_model: int = ModelConfig.d_model,
+        dropout: float = ModelConfig.dropout,
+        max_seq_length: int = ModelConfig.max_seq_length,
     ) -> None:
         super().__init__()
         # 步骤:
         #   1. 创建 nn.Dropout(dropout)
         self.dropout = nn.Dropout(dropout)
-        #   2. 用 register_buffer 注册位置编码矩阵 pe: shape = (1, max_length, d_model)
+        #   2. 用 register_buffer 注册位置编码矩阵 pe: shape = (1, max_seq_length, d_model)
         #      提示: 位置编码在 __init__ 中一次性算好,forward 中直接切片相加
-        position_encoding_matrix = torch.zeros(max_length, d_model)
+        position_encoding_matrix = torch.zeros(max_seq_length, d_model)
         #   计算 pe 的关键步骤:
-        #   a. position = torch.arange(max_length).unsqueeze(1)  → shape (max_length, 1)
+        #   a. position = torch.arange(max_seq_length).unsqueeze(1)  → shape (max_seq_length, 1)
         #   - postion 指的是每一个 token 的位置编号, 所以从0开始编号
-        position = torch.arange(max_length, dtype=torch.float).unsqueeze(1)
+        position = torch.arange(max_seq_length, dtype=torch.float).unsqueeze(1)
         #   b. div_term = exp( log(10000) * (-2i / d_model) ) → shape (d_model/2,)
         #      其中 i = arange(0, d_model, 2) / d_model
         div_term = torch.exp(
@@ -118,7 +128,7 @@ class PositionalEncoding(nn.Module):
         position_encoding_matrix[:, 0::2] = torch.sin(position * div_term)
         #   d. pe[:, 1::2] = cos(position * div_term)
         position_encoding_matrix[:, 1::2] = torch.cos(position * div_term)
-        #   e. pe = pe.unsqueeze(0) → shape (1, max_length, d_model)
+        #   e. pe = pe.unsqueeze(0) → shape (1, max_seq_length, d_model)
         position_encoding_matrix = position_encoding_matrix.unsqueeze(0)
         #   为什么要用 register_buffer？
         #   - pe 不是可训练参数,但需要随模型一起移动到 GPU
