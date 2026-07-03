@@ -165,7 +165,9 @@ class TransformerEncoder(nn.Module):
         # 步骤:
         #   1. 用 nn.ModuleList 堆叠 num_layers 个 TransformerEncoderLayer
         #      提示: nn.ModuleList([TransformerEncoderLayer(...) for _ in range(num_layers)])
-        #   2. 可选: 加一个最终的 LayerNorm(如果使用 Pre-LN,通常会在最后加一层 LayerNorm)
+        #   2. 加一个最终的 LayerNorm(如果使用 Pre-LN,通常会在最后加一层 LayerNorm)
+
+        # 这里不能用Sequential, 因为在TransformerEncoderLayer中的forward中需要传入source padding mask
         self.layers = nn.ModuleList(
             modules=[
                 TransformerEncoderLayer(
@@ -189,8 +191,11 @@ class TransformerEncoder(nn.Module):
         Returns:
             Tensor: shape = (batch, source_length, d_model)
         """
-        # TODO: 实现 forward
         # 步骤:
         #   1. 逐层调用: for layer in self.layers: x = layer(x, source_padding_mask)
         #   2. 返回最终的 x
-        raise NotImplementedError("TODO: 实现 TransformerEncoder.forward")
+        for layer in self.layers:
+            x = layer(x, source_padding_mask)
+        if self.final_norm:
+            x = self.final_norm(x)
+        return x
