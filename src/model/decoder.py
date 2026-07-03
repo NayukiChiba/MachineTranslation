@@ -269,13 +269,11 @@ class TransformerDecoder(nn.Module):
         d_model: int = ModelConfig.d_model,
         num_heads: int = ModelConfig.num_heads,
         d_feedforward: int = ModelConfig.d_feedforward,
-        num_layers: int = ModelConfig.decoder_layer_count,
+        num_layers: int = ModelConfig.decoder_num_layers,
         dropout: float = ModelConfig.dropout,
         norm_first: str = ModelConfig.norm_first,
     ) -> None:
         super().__init__()
-        # =========================================================================
-        # TODO: 初始化
         # 步骤:
         #   1. 用 nn.ModuleList 堆叠 num_layers 个 TransformerDecoderLayer
         #      注意: 必须用 ModuleList 而非 Sequential,
@@ -291,10 +289,21 @@ class TransformerDecoder(nn.Module):
         #               )
         #               for _ in range(num_layers)
         #            ])
+        self.layers = nn.ModuleList(
+            [
+                TransformerDecoderLayer(
+                    d_model=d_model,
+                    num_heads=num_heads,
+                    d_feedforward=d_feedforward,
+                    dropout=dropout,
+                    norm_first=norm_first,
+                )
+            ]
+        )
         #   2. 如果使用 Pre-LN, 在所有层之后加一个最终的 LayerNorm:
         #      self.final_norm = nn.LayerNorm(d_model) if norm_first == "pre" else None
         #      这是 Pre-LN 的标准做法, 保证最终输出的数值稳定性
-        raise NotImplementedError("TODO: 实现 TransformerDecoder.__init__")
+        self.final_norm = nn.LayerNorm(d_model) if norm_first == "pre" else None
 
     def forward(
         self,
@@ -316,8 +325,6 @@ class TransformerDecoder(nn.Module):
         Returns:
             Tensor: shape = (batch, target_length, d_model)
         """
-        # =========================================================================
-        # TODO: 实现 forward
         # 步骤:
         #   1. 逐层调用:
         #      for layer in self.layers:
@@ -328,8 +335,19 @@ class TransformerDecoder(nn.Module):
         #              target_causal_mask=target_causal_mask,
         #              source_padding_mask=source_padding_mask,
         #          )
+        for layer in self.layers:
+            x = layer(
+                x=x,
+                encoder_output=encoder_output,
+                target_padding_mask=target_padding_mask,
+                target_causal_mask=target_causal_mask,
+                source_padding_mask=source_padding_mask,
+            )
+        if self.final_norm:
+            x = self.final_norm(x)
+
         #   2. 如果 Pre-LN, 过最终 LayerNorm:
         #      if self.final_norm is not None:
         #          x = self.final_norm(x)
         #   3. 返回最终的 x
-        raise NotImplementedError("TODO: 实现 TransformerDecoder.forward")
+        return x
