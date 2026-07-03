@@ -21,6 +21,9 @@
 """
 
 import torch.nn as nn
+from decoder import TransformerDecoder
+from embedding import PositionalEncoding, TokenEmbedding
+from encoder import TransformerEncoder
 from torch import Tensor
 
 from configs.defaults import ModelConfig, TokenizerConfig
@@ -67,17 +70,14 @@ class Transformer(nn.Module):
         d_model: int = ModelConfig.d_model,
         num_heads: int = ModelConfig.num_heads,
         d_feedforward: int = ModelConfig.d_feedforward,
-        encoder_num_layers: int = ModelConfig.encoder_layer_count,
-        decoder_num_layers: int = ModelConfig.decoder_layer_count,
+        encoder_num_layers: int = ModelConfig.encoder_num_layers,
+        decoder_num_layers: int = ModelConfig.decoder_num_layers,
         dropout: float = ModelConfig.dropout,
-        max_sequence_length: int = ModelConfig.max_sequence_length,
+        max_seq_length: int = ModelConfig.max_seq_length,
         pad_id: int = TokenizerConfig.pad_id,
         norm_first: str = ModelConfig.norm_first,
     ) -> None:
         super().__init__()
-        # =========================================================================
-        # TODO: 初始化各子模块
-        #
         # 1. TokenEmbedding — 源语言和目标语言共享
         #    因为使用 SentencePiece 联合训练的共享词表, 源和目标共用同一个
         #    embedding 矩阵可以:
@@ -88,7 +88,9 @@ class Transformer(nn.Module):
         #          vocab_size=vocab_size, hidden_dim=d_model, pad_id=pad_id
         #      )
         #      self.target_embedding = self.source_embedding  # 共享权重
-        #
+        self.source_embedding = TokenEmbedding(
+            vocab_size=vocab_size, d_model=d_model, pad_id=pad_id
+        )
         # 2. PositionalEncoding — 源和目标共用
         #    位置编码不涉及可训练参数, 一份实例即可
         #    创建方式:
@@ -96,7 +98,9 @@ class Transformer(nn.Module):
         #          hidden_dim=d_model, dropout=dropout,
         #          max_length=max_sequence_length
         #      )
-        #
+        self.position_encoding = PositionalEncoding(
+            d_model=d_model, dropout=dropout, max_seq_length=max_seq_length
+        )
         # 3. TransformerEncoder
         #    创建方式:
         #      self.encoder = TransformerEncoder(
@@ -104,7 +108,14 @@ class Transformer(nn.Module):
         #          d_feedforward=d_feedforward, num_layers=encoder_num_layers,
         #          dropout=dropout, norm_first=norm_first
         #      )
-        #
+        self.encoder = TransformerEncoder(
+            d_model=d_model,
+            num_heads=num_heads,
+            d_feedforward=d_feedforward,
+            num_layers=encoder_num_layers,
+            dropout=dropout,
+            norm_first=norm_first,
+        )
         # 4. TransformerDecoder
         #    创建方式:
         #      self.decoder = TransformerDecoder(
@@ -112,7 +123,14 @@ class Transformer(nn.Module):
         #          d_feedforward=d_feedforward, num_layers=decoder_num_layers,
         #          dropout=dropout, norm_first=norm_first
         #      )
-        #
+        self.decoder = TransformerDecoder(
+            d_model=d_model,
+            num_heads=num_heads,
+            d_feedforward=d_feedforward,
+            num_layers=decoder_num_layers,
+            dropout=dropout,
+            norm_first=norm_first,
+        )
         # 5. 输出投影层 — 将 d_model 映射回 vocab_size, 得到每个位置的词表概率分布
         #    创建方式:
         #      self.projection = nn.Linear(d_model, vocab_size)
@@ -122,14 +140,13 @@ class Transformer(nn.Module):
         #      减少参数量: vocab_size × d_model
         #      做法: self.projection.weight = self.target_embedding.embedding.weight
         #      注意: 如果 vocab_size 较大(>50k), weight tying 能显著降低过拟合风险
-        #
+        self.projection = nn.Linear(d_model, vocab_size)
+
+        self.pad_id = pad_id
+        self.d_model = d_model
         # 6. 保存常用配置
         #    self.pad_id = pad_id
         #    self.d_model = d_model
-        raise NotImplementedError("TODO: 实现 Transformer.__init__")
-
-    # =========================================================================
-    # 辅助方法
 
     def encode(
         self, source_ids: Tensor, source_padding_mask: Tensor | None = None
