@@ -154,19 +154,31 @@ class TransformerEncoder(nn.Module):
 
     def __init__(
         self,
-        d_model: int,
-        num_heads: int,
-        d_feedforward: int,
-        num_layers: int,
-        dropout: float = 0.1,
+        d_model: int = ModelConfig.d_model,
+        num_heads: int = ModelConfig.num_heads,
+        d_feedforward: int = ModelConfig.d_feedforward,
+        num_layers: int = ModelConfig.encoder_num_layers,
+        dropout: float = ModelConfig.dropout,
+        norm_first: str = ModelConfig.norm_first,
     ) -> None:
         super().__init__()
-        # TODO: 初始化
         # 步骤:
         #   1. 用 nn.ModuleList 堆叠 num_layers 个 TransformerEncoderLayer
         #      提示: nn.ModuleList([TransformerEncoderLayer(...) for _ in range(num_layers)])
         #   2. 可选: 加一个最终的 LayerNorm(如果使用 Pre-LN,通常会在最后加一层 LayerNorm)
-        self.layers = None  # 替换为 nn.ModuleList(...)
+        self.layers = nn.ModuleList(
+            modules=[
+                TransformerEncoderLayer(
+                    d_model=d_model,
+                    num_heads=num_heads,
+                    d_feedforward=d_feedforward,
+                    dropout=dropout,
+                    norm_first=norm_first,
+                )
+                for _ in range(num_layers)
+            ]
+        )  # 替换为 nn.ModuleList(...)
+        self.final_norm = nn.LayerNorm(d_model) if norm_first == "pre" else None
 
     def forward(self, x: Tensor, source_padding_mask: Tensor | None = None) -> Tensor:
         """
