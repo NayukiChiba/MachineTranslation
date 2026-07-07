@@ -92,6 +92,7 @@ class Transformer(nn.Module):
         self.source_embedding = TokenEmbedding(
             vocab_size=vocab_size, d_model=d_model, pad_id=pad_id
         )
+        self.target_embedding = self.source_embedding
         # 2. PositionalEncoding — 源和目标共用
         #    位置编码不涉及可训练参数, 一份实例即可
         #    创建方式:
@@ -143,11 +144,11 @@ class Transformer(nn.Module):
         #      注意: 如果 vocab_size 较大(>50k), weight tying 能显著降低过拟合风险
         self.projection = nn.Linear(d_model, vocab_size)
 
-        self.pad_id = pad_id
-        self.d_model = d_model
         # 6. 保存常用配置
         #    self.pad_id = pad_id
         #    self.d_model = d_model
+        self.pad_id = pad_id
+        self.d_model = d_model
 
     def encode(
         self, source_ids: Tensor, source_padding_mask: Tensor | None = None
@@ -211,15 +212,13 @@ class Transformer(nn.Module):
         Returns:
             Tensor: logits, shape = (batch, target_length, vocab_size)
         """
-        # =========================================================================
-        # TODO: 实现 decode
         # 步骤:
         #   1. x = self.target_embedding(target_ids)
         #      → shape (batch, target_length, d_model)
-        #
+        x = self.target_embedding(target_ids)
         #   2. x = self.positional_encoding(x)
         #      → shape (batch, target_length, d_model)
-        #
+        x = self.position_encoding(x)
         #   3. x = self.decoder(
         #          x=x,
         #          encoder_output=encoder_output,
@@ -228,11 +227,18 @@ class Transformer(nn.Module):
         #          source_padding_mask=source_padding_mask,
         #      )
         #      → shape (batch, target_length, d_model)
-        #
+        x = self.decoder(
+            x=x,
+            encoder_output=encoder_output,
+            target_padding_mask=target_padding_mask,
+            target_causal_mask=target_causal_mask,
+            source_padding_mask=source_padding_mask,
+        )
         #   4. logits = self.projection(x)
         #      → shape (batch, target_length, vocab_size)
-        #
+        logits = self.projection(x)
         #   5. return logits
+        return logits
         #
         # 注意:
         #   推理时 decode() 不应用 softmax, 保持 logits 输出,
