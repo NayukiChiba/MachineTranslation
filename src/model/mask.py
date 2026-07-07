@@ -58,7 +58,6 @@ def create_causal_mask(seq_length: int) -> Tensor:
 
     Args:
         seq_length (int): 目标序列长度
-        device: 张量所在设备,默认 None 即 CPU
 
     Returns:
         Tensor: causal mask,shape = (1, 1, seq_length, seq_length)

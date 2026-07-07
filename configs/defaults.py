@@ -87,8 +87,8 @@ class ModelConfig:
     d_feedforward: int = 2048
 
     # Encoder 和 Decoder 的堆叠层数
-    encoder_num_layers = 6
-    decoder_num_layers = 6
+    encoder_num_layers: int = 6
+    decoder_num_layers: int = 6
 
     # Dropout 概率，用于 embedding、attention 输出和前馈网络
     dropout: float = 0.1

@@ -24,7 +24,7 @@ import torch.nn as nn
 from decoder import TransformerDecoder
 from embedding import PositionalEncoding, TokenEmbedding
 from encoder import TransformerEncoder
-from mask import create_padding_mask
+from mask import create_causal_mask, create_padding_mask
 from torch import Tensor
 
 from configs.defaults import ModelConfig, TokenizerConfig
@@ -173,7 +173,7 @@ class Transformer(nn.Module):
         #            但 Encoder 的 MultiheadAttention 期望的 key_padding_mask
         #            是 (batch, source_length), 需要 squeeze 掉中间两个维度
         #            (或者在 mask.py 中新增一个返回 (batch, seq_len) 版本的函数)
-        if not source_padding_mask:
+        if source_padding_mask is None:
             source_padding_mask = create_padding_mask(x=source_ids, pad_id=self.pad_id)
             source_padding_mask = source_padding_mask.squeeze(1).squeeze(1)
         #   2. x = self.source_embedding(source_ids)
@@ -227,6 +227,7 @@ class Transformer(nn.Module):
         #          source_padding_mask=source_padding_mask,
         #      )
         #      → shape (batch, target_length, d_model)
+
         x = self.decoder(
             x=x,
             encoder_output=encoder_output,
@@ -243,7 +244,6 @@ class Transformer(nn.Module):
         # 注意:
         #   推理时 decode() 不应用 softmax, 保持 logits 输出,
         #   让外部(translator.py)自行决定使用 greedy / beam search / temperature 等策略
-        raise NotImplementedError("TODO: 实现 Transformer.decode")
 
     # =========================================================================
     # 主前向传播
@@ -269,8 +269,6 @@ class Transformer(nn.Module):
             loss = CrossEntropyLoss(logits[:, :-1, :].transpose(1, 2),
                                      target_ids[:, 1:], ignore_index=pad_id)
         """
-        # =========================================================================
-        # TODO: 实现 forward (训练时完整流程)
         # 步骤:
         #
         # === Encoder 阶段 ===
@@ -279,19 +277,22 @@ class Transformer(nn.Module):
         #      → shape (batch, 1, 1, source_length)
         #      注意: 传给 Encoder 的 key_padding_mask 需要 (batch, source_length) 形状
         #            所以可能需要 squeeze(1).squeeze(1) 或将 mask 转为合适的形状
-        #
+        source_padding_mask = create_padding_mask(source_ids, pad_id=self.pad_id)
+        source_padding_mask = source_padding_mask.squeeze(1).squeeze(1)
         #   2. source_embed = self.source_embedding(source_ids)
         #      → shape (batch, source_length, d_model)
-        #
+        source_embed = self.source_embedding(source_ids)
         #   3. source_embed = self.positional_encoding(source_embed)
         #      → shape (batch, source_length, d_model)
-        #
+        source_embed = self.position_encoding(source_embed)
         #   4. encoder_output = self.encoder(
         #          x=source_embed,
         #          source_padding_mask=source_padding_mask  # 需要调整为 (batch, source_length)
         #      )
         #      → shape (batch, source_length, d_model)
-        #
+        encoder_output = self.encoder(
+            x=source_embed, source_padding_mask=source_padding_mask
+        )
         # === Decoder 阶段 ===
         #   5. 生成 target 的 mask:
         #      target_padding_mask = create_padding_mask(target_ids, self.pad_id)
@@ -301,13 +302,18 @@ class Transformer(nn.Module):
         #
         #      同样, key_padding_mask 传给 MultiheadAttention 时需要
         #      (batch, target_length) 形状
-        #
+        target_padding_mask = (
+            create_padding_mask(target_ids, pad_id=self.pad_id).squeeze(1).squeeze(1)
+        )
+        target_causal_mask = (
+            create_causal_mask(target_ids.size(1)).squeeze(1).squeeze(1)
+        )
         #   6. target_embed = self.target_embedding(target_ids)
         #      → shape (batch, target_length, d_model)
-        #
+        target_embed = self.target_embedding(target_ids)
         #   7. target_embed = self.positional_encoding(target_embed)
         #      → shape (batch, target_length, d_model)
-        #
+        target_embed = self.position_encoding(target_embed)
         #   8. decoder_output = self.decoder(
         #          x=target_embed,
         #          encoder_output=encoder_output,
@@ -316,13 +322,19 @@ class Transformer(nn.Module):
         #          source_padding_mask=source_padding_mask,  # (batch, source_length)
         #      )
         #      → shape (batch, target_length, d_model)
-        #
+        decoder_output = self.decoder(
+            x=target_embed,
+            encoder_output=encoder_output,
+            target_padding_mask=target_padding_mask,
+            target_causal_mask=target_causal_mask,
+            source_padding_mask=source_padding_mask,
+        )
         # === 输出投影 ===
         #   9. logits = self.projection(decoder_output)
         #      → shape (batch, target_length, vocab_size)
-        #
+        logits = self.projection(decoder_output)
         #  10. return logits
-        #
+        return logits
         # 关于 mask 形状的说明:
         #   当前 mask.py 返回的所有 mask 都是为 attention score 广播设计的
         #   (batch, 1, 1, seq_len) 形状, 适合直接做 scores.masked_fill(mask, -inf)
@@ -335,4 +347,3 @@ class Transformer(nn.Module):
         #     b) 在调用处 squeeze 掉中间维度: mask.squeeze(1).squeeze(1)
         #
         #   推荐方案 a, 保持 mask.py 的接口完整性和类型安全
-        raise NotImplementedError("TODO: 实现 Transformer.forward")

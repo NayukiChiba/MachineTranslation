@@ -154,6 +154,7 @@ class TransformerDecoderLayer(nn.Module):
                 attn_mask=target_causal_mask,  # 防止看到未来token
                 key_padding_mask=target_padding_mask,  # 忽略 <pad>
             )
+            x = self.norm1(x + self.dropout(attention_output))
             #   2. Cross-Attention(Q=Decoder, K/V=Encoder):
             #      cross_output, _ = self.cross_attention(
             #          query=x,                            ← Decoder 当前状态
@@ -298,6 +299,7 @@ class TransformerDecoder(nn.Module):
                     dropout=dropout,
                     norm_first=norm_first,
                 )
+                for _ in range(num_layers)
             ]
         )
         #   2. 如果使用 Pre-LN, 在所有层之后加一个最终的 LayerNorm:
