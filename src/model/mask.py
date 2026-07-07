@@ -13,7 +13,7 @@ Mask 生成模块
 import torch
 from torch import Tensor
 
-from configs.defaults import TokenizerConfig
+from configs.defaults import TokenizerConfig, TrainConfig
 
 
 def create_padding_mask(x: Tensor, pad_id: int = TokenizerConfig.pad_id) -> Tensor:
@@ -50,7 +50,9 @@ def create_padding_mask(x: Tensor, pad_id: int = TokenizerConfig.pad_id) -> Tens
     return padding_mask
 
 
-def create_causal_mask(seq_length: int) -> Tensor:
+def create_causal_mask(
+    seq_length: int, device: torch.device | str | None = TrainConfig.device
+) -> Tensor:
     """
     生成 causal (上三角) mask,用于 decoder 自注意力
 
@@ -58,6 +60,8 @@ def create_causal_mask(seq_length: int) -> Tensor:
 
     Args:
         seq_length (int): 目标序列长度
+        device (torch.device | str | None): 张量所在设备,
+            默认取 TrainConfig.device("cuda" if 可用 else "cpu")
 
     Returns:
         Tensor: causal mask,shape = (1, 1, seq_length, seq_length)
@@ -80,7 +84,7 @@ def create_causal_mask(seq_length: int) -> Tensor:
     # 实现 causal mask 生成逻辑
     # 步骤:
     #   1. torch.ones(seq_length, seq_length) 或用 torch.triu
-    causal_mask = torch.ones(seq_length, seq_length)
+    causal_mask = torch.ones(seq_length, seq_length, device=device)
     #   2. triu(diagonal=1) → 上三角为 1(mask 掉未来位置)
     causal_mask = torch.triu(causal_mask, diagonal=1)
     #   3. 转为 bool
@@ -116,6 +120,8 @@ def create_combined_mask(
     # 组合调用 create_padding_mask + create_causal_mask
     source_padding_mask = create_padding_mask(x=source, pad_id=pad_id)
     target_padding_mask = create_padding_mask(x=target, pad_id=pad_id)
-    target_causal_mask = create_causal_mask(seq_length=target.size(1))
+    target_causal_mask = create_causal_mask(
+        seq_length=target.size(1), device=target.device
+    )
     cross_mask = source_padding_mask
     return source_padding_mask, target_padding_mask, target_causal_mask, cross_mask
