@@ -24,6 +24,7 @@ import torch.nn as nn
 from decoder import TransformerDecoder
 from embedding import PositionalEncoding, TokenEmbedding
 from encoder import TransformerEncoder
+from mask import create_padding_mask
 from torch import Tensor
 
 from configs.defaults import ModelConfig, TokenizerConfig
@@ -164,8 +165,6 @@ class Transformer(nn.Module):
         Returns:
             Tensor: encoder_output, shape = (batch, source_length, d_model)
         """
-        # =========================================================================
-        # TODO: 实现 encode
         # 步骤:
         #   1. 如果 source_padding_mask 为 None, 根据 source_ids 和 pad_id 生成:
         #      source_padding_mask = create_padding_mask(source_ids, pad_id)
@@ -173,18 +172,20 @@ class Transformer(nn.Module):
         #            但 Encoder 的 MultiheadAttention 期望的 key_padding_mask
         #            是 (batch, source_length), 需要 squeeze 掉中间两个维度
         #            (或者在 mask.py 中新增一个返回 (batch, seq_len) 版本的函数)
-        #
+        if not source_padding_mask:
+            source_padding_mask = create_padding_mask(x=source_ids, pad_id=self.pad_id)
+            source_padding_mask = source_padding_mask.squeeze(1).squeeze(1)
         #   2. x = self.source_embedding(source_ids)
         #      → shape (batch, source_length, d_model)
-        #
+        x = self.source_embedding(source_ids)
         #   3. x = self.positional_encoding(x)
         #      → shape (batch, source_length, d_model)
-        #
+        x = self.position_encoding(x)
         #   4. encoder_output = self.encoder(x, source_padding_mask=source_padding_mask)
         #      → shape (batch, source_length, d_model)
-        #
+        encoder_output = self.encoder(x, source_padding_mask=source_padding_mask)
         #   5. return encoder_output
-        raise NotImplementedError("TODO: 实现 Transformer.encode")
+        return encoder_output
 
     def decode(
         self,
