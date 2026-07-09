@@ -14,79 +14,44 @@
     - 梯度裁剪阈值等参数由 TrainConfig 统一管理
 """
 
-import torch
 import torch.nn as nn
 from torch import Tensor
 
 from configs.defaults import TrainConfig
 
+# def set_seed(seed: int = TrainConfig.random_seed) -> None:
+#     """
+#     固定 Python、NumPy、PyTorch 的随机种子
 
-def set_seed(seed: int = TrainConfig.random_seed) -> None:
-    """
-    固定 Python、NumPy、PyTorch 的随机种子
+#     同时开启 CUDA 确定性后端, 牺牲少量性能换取实验可复现
 
-    同时开启 CUDA 确定性后端, 牺牲少量性能换取实验可复现
+#     Args:
+#         seed (int): 随机种子, 默认取 TrainConfig.random_seed (42)
 
-    Args:
-        seed (int): 随机种子, 默认取 TrainConfig.random_seed (42)
+#     使用示例:
+#         >>> set_seed(42)
 
-    使用示例:
-        >>> set_seed(42)
-
-    提示:
-        1. 需要分别在 random / numpy / torch / torch.cuda 四个层面调用 seed 函数
-        2. torch.backends.cudnn.deterministic = True 会强制 cuDNN 使用确定性算法,
-           对 Transformer(全连接 + attention)影响较小
-        3. torch.backends.cudnn.benchmark = False 关闭自动算法搜索,
-           避免不同运行选择不同卷积算法导致结果波动
-        4. 训练脚本在最开始调用一次即可
-    """
-    # 步骤:
-    #   1. random.seed(seed) — 固定 Python 内置 random
-    #
-    #   2. np.random.seed(seed) — 固定 NumPy 随机数
-    #
-    #   3. torch.manual_seed(seed) — 固定 PyTorch CPU 随机数
-    #
-    #   4. torch.cuda.manual_seed_all(seed) — 固定所有 GPU 随机数
-    #
-    #   5. torch.backends.cudnn.deterministic = True — cuDNN 确定性模式
-    #
-    #   6. torch.backends.cudnn.benchmark = False — 关闭自动算法搜索
-    raise NotImplementedError("TODO: 实现 set_seed")
-
-
-def get_device(device_str: str = TrainConfig.device) -> torch.device:
-    """
-    获取可用训练设备
-
-    优先 CUDA, 不可用时回退 CPU 并打印警告
-
-    Args:
-        device_str (str): 期望设备, 默认取 TrainConfig.device
-
-    Returns:
-        torch.device: 实际可用设备对象
-
-    使用示例:
-        >>> device = get_device()
-        >>> model.to(device)
-
-    提示:
-        1. 如果 device_str == "cuda" 且 torch.cuda.is_available(), 返回 cuda
-        2. 如果期望 cuda 但不可用, 打印警告并回退 cpu
-        3. 返回 torch.device("cpu") 作为兜底
-        4. 建议在训练入口调用一次, 全局复用该 device
-    """
-    # 步骤:
-    #   1. if device_str == "cuda" and torch.cuda.is_available():
-    #        return torch.device("cuda")
-    #
-    #   2. if device_str == "cuda":
-    #        print("警告: CUDA 不可用, 回退到 CPU")
-    #
-    #   3. return torch.device("cpu")
-    raise NotImplementedError("TODO: 实现 get_device")
+#     提示:
+#         1. 需要分别在 random / numpy / torch / torch.cuda 四个层面调用 seed 函数
+#         2. torch.backends.cudnn.deterministic = True 会强制 cuDNN 使用确定性算法,
+#            对 Transformer(全连接 + attention)影响较小
+#         3. torch.backends.cudnn.benchmark = False 关闭自动算法搜索,
+#            避免不同运行选择不同卷积算法导致结果波动
+#         4. 训练脚本在最开始调用一次即可
+#     """
+#     # 步骤:
+#     #   1. random.seed(seed) — 固定 Python 内置 random
+#     #
+#     #   2. np.random.seed(seed) — 固定 NumPy 随机数
+#     #
+#     #   3. torch.manual_seed(seed) — 固定 PyTorch CPU 随机数
+#     #
+#     #   4. torch.cuda.manual_seed_all(seed) — 固定所有 GPU 随机数
+#     #
+#     #   5. torch.backends.cudnn.deterministic = True — cuDNN 确定性模式
+#     #
+#     #   6. torch.backends.cudnn.benchmark = False — 关闭自动算法搜索
+#     raise NotImplementedError("TODO: 实现 set_seed")
 
 
 def count_parameters(model: nn.Module) -> tuple[int, int]:
@@ -111,11 +76,13 @@ def count_parameters(model: nn.Module) -> tuple[int, int]:
     """
     # 步骤:
     #   1. trainable = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    #
+    trainable = sum(
+        param.numel() for param in model.parameters() if param.requires_grad
+    )
     #   2. total = sum(p.numel() for p in model.parameters())
-    #
+    total = sum(param.numel() for param in model.parameters())
     #   3. return trainable, total
-    raise NotImplementedError("TODO: 实现 count_parameters")
+    return trainable, total
 
 
 def clip_gradients(
@@ -148,34 +115,6 @@ def clip_gradients(
     """
     # 步骤:
     #   1. grad_norm = nn.utils.clip_grad_norm_(model.parameters(), max_norm)
-    #
+    normed_grad = nn.utils.clip_grad_norm_(model.parameters(), max_norm)
     #   2. return grad_norm.item() if isinstance(grad_norm, Tensor) else grad_norm
-    raise NotImplementedError("TODO: 实现 clip_gradients")
-
-
-def move_batch_to_device(
-    batch: dict[str, Tensor], device: torch.device
-) -> dict[str, Tensor]:
-    """
-    将 batch 字典中所有 Tensor 移动到指定设备
-
-    Args:
-        batch (dict[str, Tensor]): 包含以下 key:
-            - "source_ids"        (batch, source_length)
-            - "target_input_ids"  (batch, target_length)
-            - "target_output_ids" (batch, target_length)
-        device (torch.device): 目标设备
-
-    Returns:
-        dict[str, Tensor]: 迁移后的 batch
-
-    使用示例:
-        >>> batch = move_batch_to_device(batch, device)
-
-    提示:
-        1. 用字典推导: {k: v.to(device) for k, v in batch.items()}
-        2. .to(device) 对已在目标设备上的 Tensor 是空操作, 安全
-    """
-    # 步骤:
-    #   1. return {key: value.to(device) for key, value in batch.items()}
-    raise NotImplementedError("TODO: 实现 move_batch_to_device")
+    return normed_grad.item() if isinstance(normed_grad, Tensor) else normed_grad
