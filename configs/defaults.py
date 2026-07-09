@@ -135,7 +135,9 @@ class TrainConfig:
     sgd_momentum: float = 0.9
 
     # 学习率调度器类型，支持 constant / cosine / step / exponential / cosine_warmup
-    scheduler_type: str = "cosine_warmup"
+    scheduler_type: Literal[
+        "constant", "cosine", "step", "exponential", "cosine_warmup"
+    ] = "cosine_warmup"
 
     # warmup 步数，cosine_warmup 使用
     scheduler_warmup_steps: int = 500
