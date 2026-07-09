@@ -81,21 +81,41 @@ def create_optimizer(
     """
     # 步骤:
     #   1. params = model.parameters()
-    #
+    params = model.parameters()
     #   2. if optimizer_type == "adam":
     #        return optim.Adam(params, lr=learning_rate, betas=betas,
     #                          eps=eps, weight_decay=weight_decay)
-    #
+    if optimizer_type == "adam":
+        return optim.Adam(
+            params, lr=learning_rate, betas=betas, eps=eps, weight_decay=weight_decay
+        )
     #   3. elif optimizer_type == "adamw":
     #        return optim.AdamW(params, lr=learning_rate, betas=betas,
     #                           eps=eps, weight_decay=weight_decay)
-    #
+    elif optimizer_type == "adamw":
+        return optim.AdamW(
+            params=params,
+            lr=learning_rate,
+            betas=betas,
+            eps=eps,
+            weight_decay=weight_decay,
+        )
     #   4. elif optimizer_type == "sgd":
     #        return optim.SGD(params, lr=learning_rate, momentum=momentum,
     #                         weight_decay=weight_decay)
+    elif optimizer_type == "sgd":
+        return optim.SGD(
+            params=params,
+            lr=learning_rate,
+            momentum=momentum,
+            weight_decay=weight_decay,
+        )
     #
     #   5. else:
     #        raise ValueError(
     #            f"不支持的优化器类型: {optimizer_type}, 可选: adam / adamw / sgd"
     #        )
-    raise NotImplementedError("TODO: 实现 create_optimizer")
+    else:
+        raise ValueError(
+            f"不支持的优化器类型: {optimizer_type}, 可选: adam / adamw / sgd"
+        )

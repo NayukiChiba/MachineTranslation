@@ -116,7 +116,7 @@ class TrainConfig:
     validation_batch_count: int = 100
 
     # 优化器类型，支持 adam / adamw / sgd
-    optimizer_type: str = "adamw"
+    optimizer_type: Literal["adam", "adamw", "sgd"] = "adamw"
 
     # 初始学习率
     learning_rate: float = 1e-4
