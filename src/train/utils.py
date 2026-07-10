@@ -14,44 +14,45 @@
     - 梯度裁剪阈值等参数由 TrainConfig 统一管理
 """
 
+import random
+
+import numpy as np
+import torch
 import torch.nn as nn
 from torch import Tensor
 
 from configs.defaults import TrainConfig
 
-# def set_seed(seed: int = TrainConfig.random_seed) -> None:
-#     """
-#     固定 Python、NumPy、PyTorch 的随机种子
 
-#     同时开启 CUDA 确定性后端, 牺牲少量性能换取实验可复现
+def set_seed(seed: int = TrainConfig.random_seed) -> None:
+    """
+    固定 Python、NumPy、PyTorch 的随机种子
 
-#     Args:
-#         seed (int): 随机种子, 默认取 TrainConfig.random_seed (42)
+    同时开启 CUDA 确定性后端, 牺牲少量性能换取实验可复现
 
-#     使用示例:
-#         >>> set_seed(42)
+    Args:
+        seed (int): 随机种子, 默认取 TrainConfig.random_seed (42)
 
-#     提示:
-#         1. 需要分别在 random / numpy / torch / torch.cuda 四个层面调用 seed 函数
-#         2. torch.backends.cudnn.deterministic = True 会强制 cuDNN 使用确定性算法,
-#            对 Transformer(全连接 + attention)影响较小
-#         3. torch.backends.cudnn.benchmark = False 关闭自动算法搜索,
-#            避免不同运行选择不同卷积算法导致结果波动
-#         4. 训练脚本在最开始调用一次即可
-#     """
-#     # 步骤:
-#     #   1. random.seed(seed) — 固定 Python 内置 random
-#     #
-#     #   2. np.random.seed(seed) — 固定 NumPy 随机数
-#     #
-#     #   3. torch.manual_seed(seed) — 固定 PyTorch CPU 随机数
-#     #
-#     #   4. torch.cuda.manual_seed_all(seed) — 固定所有 GPU 随机数
-#     #
-#     #   5. torch.backends.cudnn.deterministic = True — cuDNN 确定性模式
-#     #
-#     #   6. torch.backends.cudnn.benchmark = False — 关闭自动算法搜索
-#     raise NotImplementedError("TODO: 实现 set_seed")
+    使用示例:
+        >>> set_seed(42)
+
+    提示:
+        1. 需要分别在 random / numpy / torch / torch.cuda 四个层面调用 seed 函数
+        2. torch.backends.cudnn.deterministic = True 会强制 cuDNN 使用确定性算法,
+           对 Transformer(全连接 + attention)影响较小
+        3. torch.backends.cudnn.benchmark = False 关闭自动算法搜索,
+           避免不同运行选择不同卷积算法导致结果波动
+        4. 训练脚本在最开始调用一次即可
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 
 def count_parameters(model: nn.Module) -> tuple[int, int]:
