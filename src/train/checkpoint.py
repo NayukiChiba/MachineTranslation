@@ -24,8 +24,9 @@
 """
 
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
+import torch
 import torch.nn as nn
 import torch.optim as optim
 
@@ -42,7 +43,7 @@ def save_checkpoint(
     scheduler: Any = None,
     early_stopping: Any = None,
     scaler: Any = None,
-    config: Optional[Dict] = None,
+    config: dict[str, Any] | None = None,
     checkpoint_dir: Path = paths.CHECKPOINTS_DIR,
 ) -> None:
     """
@@ -94,19 +95,51 @@ def save_checkpoint(
 
         6. 打印保存信息, 包含 epoch / step / metric
     """
-    # 步骤详见上方提示
-    raise NotImplementedError("TODO: 实现 save_checkpoint")
+    # 确保检查点目录存在
+    checkpoint_dir = Path(checkpoint_dir)
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+
+    # 构建检查点字典:模型参数 + 优化器状态 + 训练进度
+    checkpoint: dict[str, Any] = {
+        "epoch": epoch,
+        "global_step": global_step,
+        "best_metric": best_metric,
+        "model_state_dict": model.state_dict(),
+        "optimizer_state_dict": optimizer.state_dict(),
+    }
+
+    # 可选状态:调度器、早停控制器、AMP scaler(仅保存非 None 的组件)
+    optional_states = {
+        "scheduler_state_dict": scheduler,
+        "early_stopping_state": early_stopping,
+        "scaler_state_dict": scaler,
+    }
+    for state_name, component in optional_states.items():
+        if component is not None:
+            checkpoint[state_name] = component.state_dict()
+
+    # 将训练配置快照写入检查点(可选)
+    if config is not None:
+        checkpoint["config"] = config
+
+    # 始终保存 latest 检查点,用于断点续训
+    last_path = checkpoint_dir / "last_model.pth"
+    torch.save(checkpoint, last_path)
+
+    # 如果是当前最佳模型,额外保存 best 检查点
+    if is_best:
+        torch.save(checkpoint, checkpoint_dir / "best_model.pth")
 
 
 def load_checkpoint(
     checkpoint_path: Path,
     model: nn.Module,
-    optimizer: Optional[optim.Optimizer] = None,
+    optimizer: optim.Optimizer | None = None,
     scheduler: Any = None,
     early_stopping: Any = None,
     scaler: Any = None,
     device: str = "cpu",
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     从检查点文件恢复训练状态
 
@@ -154,5 +187,40 @@ def load_checkpoint(
            如果模型在 GPU 上但 checkpoint 在 CPU 加载, optimizer 的动量缓存
            可能仍在 CPU, 需要额外处理或直接用 map_location=device 匹配
     """
-    # 步骤详见上方提示
-    raise NotImplementedError("TODO: 实现 load_checkpoint")
+    # 检查检查点文件是否存在
+    checkpoint_path = Path(checkpoint_path)
+    if not checkpoint_path.is_file():
+        raise FileNotFoundError(f"检查点不存在: {checkpoint_path}")
+
+    # 加载检查点到指定设备,然后恢复模型参数
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
+    model.load_state_dict(checkpoint["model_state_dict"])
+
+    # 定义可选组件的 (对象, 键名) 映射
+    components = (
+        (optimizer, "optimizer_state_dict"),
+        (scheduler, "scheduler_state_dict"),
+        (early_stopping, "early_stopping_state"),
+        (scaler, "scaler_state_dict"),
+    )
+
+    # 逐个恢复可选组件的状态(仅当组件非 None 且检查点中存在对应键时)
+    for component, state_name in components:
+        if component is not None and state_name in checkpoint:
+            component.load_state_dict(checkpoint[state_name])
+
+    # 将优化器内部的动量 / 方差张量迁移到目标设备,避免设备不匹配
+    if optimizer is not None:
+        target_device = torch.device(device)
+        for optimizer_state in optimizer.state.values():
+            for state_name, state_value in optimizer_state.items():
+                if isinstance(state_value, torch.Tensor):
+                    optimizer_state[state_name] = state_value.to(target_device)
+
+    # 返回检查点元信息,供调用方决定从哪个 epoch 继续训练
+    return {
+        "epoch": int(checkpoint.get("epoch", -1)),
+        "global_step": int(checkpoint.get("global_step", 0)),
+        "best_metric": float(checkpoint.get("best_metric", float("inf"))),
+        "config": checkpoint.get("config", {}),
+    }
