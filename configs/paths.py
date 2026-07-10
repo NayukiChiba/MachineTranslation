@@ -7,7 +7,6 @@
 3. 将 OPUS-100 英中数据集导出为项目可控的 JSONL 文件
 """
 
-import os
 from pathlib import Path
 
 # 项目根目录(configs 目录的上一级,即 MachineTranslation 目录)
@@ -31,11 +30,7 @@ def get_dir(path: Path) -> Path:
 
 
 # 数据根目录可通过环境变量覆盖,默认保存在项目内,避免依赖固定磁盘路径
-DATASETS_DIR = get_dir(
-    Path(os.environ.get("MACHINE_TRANSLATION_DATASETS_DIR", ROOT / "datasets"))
-    .expanduser()
-    .resolve()
-)
+DATASETS_DIR = get_dir(Path("D:/Datasets/MachineTranslation"))
 
 # Hugging Face 下载和缓存目录
 DOWNLOADS_DIR = get_dir(DATASETS_DIR / "downloads")  # 通用下载缓存目录
