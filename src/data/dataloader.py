@@ -1,15 +1,15 @@
 """
 机器翻译 DataLoader 模块
 
-功能：
+功能:
 1. 读取已经编码好的 processed JSONL
 2. 在 batch 级别完成 padding
 3. 导出 train / validation / test 三个 DataLoader
 
-注意：
-    本模块不生成 mask。
-    create_dataloaders 默认会检查数据产物是否存在。
-    如果缺失，会自动执行 raw -> interim -> tokenizer -> processed 管线。
+注意:
+    本模块不生成 mask.
+    create_dataloaders 默认会检查数据产物是否存在.
+    如果缺失,会自动执行 raw -> interim -> tokenizer -> processed 管线.
 """
 
 from pathlib import Path
@@ -17,6 +17,7 @@ from pathlib import Path
 import torch
 from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
+from tqdm.auto import tqdm
 
 from configs import paths
 from configs.defaults import DataLoaderConfig, TokenizerConfig
@@ -45,10 +46,11 @@ def prepare_data_pipeline(force: bool = False) -> None:
     Args:
         force: 是否强制重新生成所有数据产物
 
-    注意：
-        第一次运行会比较慢，因为需要下载数据、清洗数据、训练分词器、
-        生成 processed 数据。之后只要文件存在，就会直接跳过。
+    注意:
+        第一次运行会比较慢,因为需要下载数据、清洗数据、训练分词器、
+        生成 processed 数据.之后只要文件存在,就会直接跳过.
     """
+    # 各阶段的产出文件列表
     raw_paths = [
         paths.RAW_TRAIN_DATASET_PATH,
         paths.RAW_VAL_DATASET_PATH,
@@ -69,6 +71,7 @@ def prepare_data_pipeline(force: bool = False) -> None:
         paths.PROCESSED_TEST_DATASET_PATH,
     ]
 
+    # 按管线顺序依次检查并生成缺失的中间产物
     if force or not files_exist(raw_paths):
         print("准备 raw 数据集")
         from src.data.download import download_raw_dataset
@@ -108,8 +111,15 @@ def load_samples(file_path: Path) -> list[dict[str, list[int]]]:
     """
     samples: list[dict[str, list[int]]] = []
 
+    # Dataset 当前常驻内存;tqdm 显示 JSONL 转换为 Python 列表的读取进度.
     with file_path.open("r", encoding="utf-8") as input_file:
-        for line in input_file:
+        for line in tqdm(
+            input_file,
+            desc=f"load {file_path.stem}",
+            unit="line",
+            dynamic_ncols=True,
+            leave=False,
+        ):
             item = load_jsonl_item(line)
 
             if item is None:
@@ -138,6 +148,7 @@ def pad_token_ids(token_ids: list[int], max_length: int, pad_id: int) -> list[in
     Returns:
         list[int]: padding 后的 token id 列表
     """
+    # 计算需要填充的数量,在序列末尾追加 pad_id
     pad_count = max_length - len(token_ids)
     return token_ids + [pad_id] * pad_count
 
@@ -185,9 +196,11 @@ def collate_batch(
     Returns:
         dict[str, Tensor]: padding 后的 batch
     """
+    # 计算 batch 内 source 和 target 的最大长度,用于对齐 padding
     max_source_length = max(len(item["source_ids"]) for item in batch)
     max_target_length = max(len(item["target_input_ids"]) for item in batch)
 
+    # 构建 padding 后的 tensor,shape: [batch_size, max_length]
     source_ids = torch.tensor(
         [
             pad_token_ids(item["source_ids"], max_source_length, pad_id)
@@ -219,10 +232,10 @@ def collate_batch(
 
 def create_dataloader(
     file_path: Path,
-    batch_size: int = DataLoaderConfig.BATCH_SIZE,
-    pad_id: int = TokenizerConfig.PAD_ID,
+    batch_size: int = DataLoaderConfig.batch_size,
+    pad_id: int = TokenizerConfig.pad_id,
     shuffle: bool = False,
-    num_workers: int = DataLoaderConfig.NUM_WORKERS,
+    num_workers: int = DataLoaderConfig.worker_count,
 ) -> DataLoader:
     """
     创建单个 DataLoader
@@ -239,6 +252,7 @@ def create_dataloader(
     """
     dataset = EncodedTranslationDataset(file_path)
 
+    # collate_fn 使用 lambda 捕获 pad_id,在 batch 级别完成 padding
     return DataLoader(
         dataset,
         batch_size=batch_size,
@@ -249,11 +263,11 @@ def create_dataloader(
 
 
 def create_dataloaders(
-    batch_size: int = DataLoaderConfig.BATCH_SIZE,
-    pad_id: int = TokenizerConfig.PAD_ID,
-    num_workers: int = DataLoaderConfig.NUM_WORKERS,
-    auto_prepare: bool = DataLoaderConfig.AUTO_PREPARE,
-    force_prepare: bool = DataLoaderConfig.FORCE_PREPARE,
+    batch_size: int = DataLoaderConfig.batch_size,
+    pad_id: int = TokenizerConfig.pad_id,
+    num_workers: int = DataLoaderConfig.worker_count,
+    auto_prepare: bool = DataLoaderConfig.auto_prepare,
+    force_prepare: bool = DataLoaderConfig.force_prepare,
 ) -> tuple[DataLoader, DataLoader, DataLoader]:
     """
     创建 train / validation / test 三个 DataLoader
@@ -268,9 +282,11 @@ def create_dataloaders(
     Returns:
         tuple[DataLoader, DataLoader, DataLoader]: 训练、验证、测试 DataLoader
     """
+    # 自动检查并补齐数据管线缺失的中间文件
     if auto_prepare:
         prepare_data_pipeline(force=force_prepare)
 
+    # 训练集需要 shuffle,验证集和测试集保持顺序以便复现
     train_dataloader = create_dataloader(
         paths.PROCESSED_TRAIN_DATASET_PATH,
         batch_size=batch_size,
@@ -297,10 +313,12 @@ def create_dataloaders(
 
 
 def main() -> None:
-    """主函数：检查 DataLoader 输出形状"""
+    """主函数:检查 DataLoader 输出形状"""
+    # 只取验证集 DataLoader 做快速 smoke test
     _, validation_dataloader, _ = create_dataloaders()
     batch = next(iter(validation_dataloader))
 
+    # 打印每个 tensor 的形状,验证 collate_fn 和 padding 逻辑正确
     for name, value in batch.items():
         print(f"{name}: {tuple(value.shape)}")
 
