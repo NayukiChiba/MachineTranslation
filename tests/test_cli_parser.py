@@ -1,26 +1,26 @@
 """
-CLI 参数覆盖和配置构建测试.
+CLI 参数覆盖和静态配置测试.
 
 测试范围:
 1. 默认参数是否正确继承 configs/defaults.py 中的配置常量
-2. 命令行传入的参数是否正确映射到对应的 Config 对象字段
+2. 命令行传入的参数是否正确映射到对应的静态 Config 类属性
 3. eval 和 translate 子命令的特殊参数处理
-4. 非法参数组合是否在构建配置阶段正确报错
+4. 非法参数组合是否在配置阶段正确报错
 """
 
 import pytest
 
-from configs.defaults import DataLoaderConfig, InferenceConfig, ModelConfig, TrainConfig
+from configs.defaults import DataLoaderConfig, ModelConfig, TrainConfig
 from main import (
-    build_inference_config,
-    build_loader_config,
-    build_model_config,
-    build_train_config,
+    configureInference,
+    configureLoader,
+    configureModel,
+    configureTrain,
 )
 from src.cli.parser import create_parser
 
 
-def test_train_defaults_match_config_objects() -> None:
+def test_train_defaults_match_static_configs() -> None:
     """train 不传选项时应完整复用 defaults.py."""
     # 仅传入子命令名,不传入任何可选参数
     args = create_parser().parse_args(["train"])
@@ -33,8 +33,9 @@ def test_train_defaults_match_config_objects() -> None:
     assert args.scheduler == TrainConfig.scheduler_type
 
 
-def test_train_options_build_complete_configs() -> None:
+def test_train_options_configure_static_classes() -> None:
     """模型、数据、优化器和调度器参数应映射到正确字段."""
+    originalDModel = ModelConfig.d_model
     # 传入完整的训练参数组合,覆盖模型、数据加载器、训练器三类配置
     args = create_parser().parse_args(
         [
@@ -73,14 +74,15 @@ def test_train_options_build_complete_configs() -> None:
         ]
     )
 
-    # 将解析结果分别构建为三类配置对象
-    model_config = build_model_config(args)
-    loader_config = build_loader_config(args)
-    train_config = build_train_config(args)
+    # 将解析结果分别映射为三个静态配置类
+    model_config = configureModel(args)
+    loader_config = configureLoader(args)
+    train_config = configureTrain(args)
 
     # 验证模型配置字段
     assert model_config.d_model == 64
     assert model_config.decoder_num_layers == 3
+    assert ModelConfig.d_model == originalDModel
     # 验证数据加载器配置字段
     assert loader_config.batch_size == 8
     assert loader_config.worker_count == 1
@@ -137,20 +139,25 @@ def test_translate_supports_single_and_interactive_modes() -> None:
 
     # 单次模式下 text 非空,推理配置使用指定的生成长度上限
     assert single_args.text == "hello"
-    assert build_inference_config(single_args) == InferenceConfig(
-        max_generation_length=20,
-        show_progress=True,
-    )
+    inference_config = configureInference(single_args)
+    assert inference_config.max_generation_length == 20
+    assert inference_config.show_progress
     # 交互模式下 text 为 None,由上层 translate_main 进入交互循环
     assert interactive_args.text is None
     assert not interactive_args.progress
 
 
-def test_invalid_model_dimensions_fail_when_building_config() -> None:
+def test_invalid_model_dimensions_fail_when_configuring() -> None:
     """d_model 不能整除 num_heads 时应在加载数据前失败."""
     # 构造非法参数组合:d_model=63 不能被 num_heads=8 整除
     args = create_parser().parse_args(["train", "--d-model", "63", "--num-heads", "8"])
 
     # 期望在构建配置阶段就抛出 ValueError,而非在后续阶段静默失败
     with pytest.raises(ValueError, match="整除"):
-        build_model_config(args)
+        configureModel(args)
+
+
+def test_config_classes_cannot_be_instantiated() -> None:
+    """配置必须始终以类访问,禁止退回实例模式."""
+    with pytest.raises(TypeError, match="静态配置类"):
+        TrainConfig()

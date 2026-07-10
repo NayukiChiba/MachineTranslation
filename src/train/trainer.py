@@ -42,7 +42,6 @@ loss 计算:
     设置 ignore_index=pad_id 忽略 <pad> 位置的 loss
 """
 
-from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
@@ -95,7 +94,7 @@ class Trainer:
         val_loader: DataLoader,
         device: torch.device | str | None = None,
         resume_from: Path | None = None,
-        config: TrainConfig | None = None,
+        config: type[TrainConfig] = TrainConfig,
         optimizer: torch.optim.Optimizer | None = None,
         scheduler: Any = None,
         criterion: nn.Module | None = None,
@@ -189,8 +188,8 @@ class Trainer:
         #   - optimizer 状态需要和 model 在同一设备,
         #     如果 checkpoint 在 CPU 加载但 model 在 GPU,
         #     optimizer 的动量缓存可能还在 CPU, 需注意处理
-        # 未注入配置时创建独立默认实例,避免不同 Trainer 共享可变配置.
-        self.config = config or TrainConfig()
+        # Trainer 只保存静态配置类,不会在训练模块中创建配置实例.
+        self.config = config
         # 在模型和 DataLoader 工作前固定 Python、NumPy、CPU/CUDA 随机源.
         set_seed(self.config.random_seed)
 
@@ -212,8 +211,8 @@ class Trainer:
         )
         # start 创建 handler;后续任何 info/debug 调用都要求 logger 已启动.
         self.logger.start()
-        # asdict 把 dataclass 转成普通字典,便于日志逐项记录最终配置.
-        self.logger.log_config(asdict(self.config))
+        # 导出普通字典,便于日志逐项记录最终配置.
+        self.logger.log_config(self.config.toDict())
         # 输出参数量和模型设备,便于训练开始前核对模型规模.
         self.logger.log_model_info(self.model)
 
@@ -467,7 +466,7 @@ class Trainer:
             scheduler=self.scheduler,
             early_stopping=self.early_stopping,
             scaler=self.scaler,
-            config={"model": model_config, "train": asdict(self.config)},
+            config={"model": model_config, "train": self.config.toDict()},
             checkpoint_dir=self.checkpoint_dir,
         )
 

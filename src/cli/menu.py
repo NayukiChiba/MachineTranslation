@@ -6,7 +6,6 @@
 checkpoint,主菜单只负责循环和分发.
 """
 
-from dataclasses import fields, replace
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +14,7 @@ from configs.defaults import (
     DataLoaderConfig,
     InferenceConfig,
     ModelConfig,
+    StaticConfig,
     TrainConfig,
 )
 from src.cli.actions import evaluate_model, prepare_data, train_model
@@ -46,25 +46,23 @@ def _parse_config_value(raw_value: str, current_value: Any) -> Any:
     return raw_value
 
 
-def _edit_config(config: Any) -> Any:
-    """逐项询问 dataclass 字段,空输入表示保留当前值."""
+def _edit_config(config: type[StaticConfig]) -> type[StaticConfig]:
+    """逐项询问静态配置字段,空输入表示保留当前值."""
     # updates 只记录用户实际输入的字段,未输入字段继续使用原对象值.
     updates: dict[str, Any] = {}
-    print(f"\n修改 {config.__class__.__name__},直接回车保留括号内默认值")
-    # dataclasses.fields 保证遍历顺序与 defaults.py 中声明顺序一致.
-    for config_field in fields(config):
-        current_value = getattr(config, config_field.name)
-        raw_value = input(f"{config_field.name} ({current_value!r}): ").strip()
+    print(f"\n修改 {config.__name__},直接回车保留括号内默认值")
+    for fieldName in config.getFieldNames():
+        current_value = getattr(config, fieldName)
+        raw_value = input(f"{fieldName} ({current_value!r}): ").strip()
         if not raw_value:
             continue
-        updates[config_field.name] = _parse_config_value(raw_value, current_value)
-    # replace 会重新调用 __post_init__,所有跨字段约束仍会被校验.
-    return replace(config, **updates)
+        updates[fieldName] = _parse_config_value(raw_value, current_value)
+    return config.withOverrides(**updates)
 
 
-def _ask_to_edit(config: Any) -> Any:
+def _ask_to_edit(config: type[StaticConfig]) -> type[StaticConfig]:
     """展示配置,并在用户确认后进入逐字段编辑."""
-    config.print_summary()
+    config.printSummary()
     answer = input("是否修改以上配置? [y/N]: ").strip().lower()
     if answer != "y":
         return config
@@ -110,11 +108,11 @@ def _menu_train() -> None:
     """交互式训练入口,可分别修改模型、DataLoader 和训练配置."""
     print("\n准备训练配置")
     # 模型配置控制所有 Transformer 张量的隐藏维度和层数.
-    model_config = _ask_to_edit(ModelConfig())
+    model_config = _ask_to_edit(ModelConfig)
     # DataLoader 配置控制 batch 第一维、worker 数和数据准备行为.
-    loader_config = _ask_to_edit(DataLoaderConfig())
+    loader_config = _ask_to_edit(DataLoaderConfig)
     # 训练配置控制优化器、调度器、早停、AMP、日志和 tqdm.
-    train_config = _ask_to_edit(TrainConfig())
+    train_config = _ask_to_edit(TrainConfig)
 
     # 如果存在 last_model.pth,则允许用户从上次 optimizer/scheduler 状态继续.
     resume_from: Path | None = None
@@ -150,7 +148,7 @@ def _menu_eval() -> None:
         "test",
     )
     # 用户可以修改 batch_size、worker_count 和数据准备策略.
-    loader_config = _ask_to_edit(DataLoaderConfig())
+    loader_config = _ask_to_edit(DataLoaderConfig)
     # 设备默认与 TrainConfig 保持一致,CUDA 可用时自动选择 CUDA.
     device = input(f"device ({TrainConfig.device}): ").strip() or TrainConfig.device
     # 空输入表示遍历完整切分,否则只评估指定数量的 batch.
@@ -173,7 +171,7 @@ def _menu_translate() -> None:
     if checkpoint_path is None:
         return
     # 允许修改最大生成长度和是否显示 token 级进度条.
-    inference_config = _ask_to_edit(InferenceConfig())
+    inference_config = _ask_to_edit(InferenceConfig)
     # 默认设备从训练配置读取,也允许临时改为 cpu 或指定 cuda 编号.
     device = input(f"device ({TrainConfig.device}): ").strip() or TrainConfig.device
     # 在循环外加载 tokenizer 和模型,避免每翻译一句都重复读取 checkpoint.

@@ -7,22 +7,63 @@ configs/defaults.py
 2. 后续扩展模型和训练默认参数
 """
 
-from dataclasses import dataclass, fields
-from typing import Literal
+from typing import Any, Literal, Self
 
 import torch
 
 
-def print_config(config: object) -> None:
-    """逐项打印 dataclass 配置,供 CLI 和交互菜单展示最终生效值."""
-    print(f"[{config.__class__.__name__}]")
-    for config_field in fields(config):
-        value = getattr(config, config_field.name)
-        print(f"  {config_field.name} = {value!r}")
+class StaticConfig:
+    """静态配置基类,所有配置只允许通过类属性访问."""
+
+    def __new__(cls) -> Self:
+        """禁止创建配置实例,避免静态配置与实例配置混用."""
+        raise TypeError(f"{cls.__name__} 是静态配置类,不能实例化")
+
+    @classmethod
+    def getFieldNames(cls) -> tuple[str, ...]:
+        """按声明顺序返回配置字段名."""
+        fieldNames: list[str] = []
+        for configClass in reversed(cls.__mro__):
+            if not issubclass(configClass, StaticConfig):
+                continue
+            for fieldName in configClass.__dict__.get("__annotations__", {}):
+                if fieldName not in fieldNames:
+                    fieldNames.append(fieldName)
+        return tuple(fieldNames)
+
+    @classmethod
+    def withOverrides(cls, **overrides: Any) -> type[Self]:
+        """返回带覆盖值的新静态配置类,不会创建配置实例."""
+        unknownFields = set(overrides) - set(cls.getFieldNames())
+        if unknownFields:
+            unknownNames = ", ".join(sorted(unknownFields))
+            raise AttributeError(f"未知配置字段: {unknownNames}")
+        configuredClass = type(
+            cls.__name__,
+            (cls,),
+            {"__module__": cls.__module__, **overrides},
+        )
+        configuredClass.validate()
+        return configuredClass
+
+    @classmethod
+    def toDict(cls) -> dict[str, Any]:
+        """将静态配置导出为普通字典."""
+        return {fieldName: getattr(cls, fieldName) for fieldName in cls.getFieldNames()}
+
+    @classmethod
+    def validate(cls) -> None:
+        """校验配置值,具体约束由子类实现."""
+
+    @classmethod
+    def printSummary(cls) -> None:
+        """逐项打印当前静态配置."""
+        print(f"[{cls.__name__}]")
+        for fieldName, value in cls.toDict().items():
+            print(f"  {fieldName} = {value!r}")
 
 
-@dataclass
-class DataConfig:
+class DataConfig(StaticConfig):
     """数据集配置"""
 
     # 英文句子最大词数,过长样本会增加显存和训练成本
@@ -40,22 +81,18 @@ class DataConfig:
     # target 序列最大 token 数,包含 <bos> 或 <eos>
     max_target_tokens: int = 128
 
-    def __post_init__(self) -> None:
+    @classmethod
+    def validate(cls) -> None:
         """校验文本和 token 长度限制,避免数据阶段产生空序列."""
-        if self.max_english_words <= 0 or self.max_chinese_chars <= 0:
+        if cls.max_english_words <= 0 or cls.max_chinese_chars <= 0:
             raise ValueError("原始文本长度限制必须大于 0")
-        if self.max_length_ratio < 1:
+        if cls.max_length_ratio < 1:
             raise ValueError("中英文长度比例上限不能小于 1")
-        if self.max_source_tokens <= 1 or self.max_target_tokens <= 1:
+        if cls.max_source_tokens <= 1 or cls.max_target_tokens <= 1:
             raise ValueError("token 长度上限必须大于 1,以容纳特殊 token")
 
-    def print_summary(self) -> None:
-        """打印数据配置摘要."""
-        print_config(self)
 
-
-@dataclass
-class TokenizerConfig:
+class TokenizerConfig(StaticConfig):
     """SentencePiece 分词器配置"""
 
     # 共享子词词表大小,第一版控制在 16k,兼顾效果和训练成本
@@ -81,28 +118,24 @@ class TokenizerConfig:
     begin_of_sentence_token: str = "<bos>"
     end_of_sentence_token: str = "<eos>"
 
-    def __post_init__(self) -> None:
+    @classmethod
+    def validate(cls) -> None:
         """校验 SentencePiece 参数和特殊 token id."""
-        if self.vocab_size <= 4:
+        if cls.vocab_size <= 4:
             raise ValueError("词表大小必须大于特殊 token 数量")
-        if not 0 < self.character_coverage <= 1:
+        if not 0 < cls.character_coverage <= 1:
             raise ValueError("character_coverage 必须在 (0, 1] 范围内")
         special_ids = {
-            self.pad_id,
-            self.unknown_id,
-            self.begin_of_sentence_id,
-            self.end_of_sentence_id,
+            cls.pad_id,
+            cls.unknown_id,
+            cls.begin_of_sentence_id,
+            cls.end_of_sentence_id,
         }
         if len(special_ids) != 4:
             raise ValueError("四个特殊 token id 不能重复")
 
-    def print_summary(self) -> None:
-        """打印分词器配置摘要."""
-        print_config(self)
 
-
-@dataclass
-class DataLoaderConfig:
+class DataLoaderConfig(StaticConfig):
     """DataLoader 默认配置"""
 
     # 默认 batch 大小,先用较保守的值,避免显存压力过大
@@ -117,20 +150,16 @@ class DataLoaderConfig:
     # 默认不强制重跑管线,避免重复下载和重复训练分词器
     force_prepare: bool = False
 
-    def __post_init__(self) -> None:
+    @classmethod
+    def validate(cls) -> None:
         """校验 DataLoader 并行和批次参数."""
-        if self.batch_size <= 0:
+        if cls.batch_size <= 0:
             raise ValueError("batch_size 必须大于 0")
-        if self.worker_count < 0:
+        if cls.worker_count < 0:
             raise ValueError("worker_count 不能小于 0")
 
-    def print_summary(self) -> None:
-        """打印 DataLoader 配置摘要."""
-        print_config(self)
 
-
-@dataclass
-class ModelConfig:
+class ModelConfig(StaticConfig):
     """Transformer 模型默认配置"""
 
     # 模型隐藏维度,embedding、attention 和前馈网络输入输出都使用该维度
@@ -155,30 +184,26 @@ class ModelConfig:
     # LayerNorm的放置策略
     norm_first: Literal["pre", "post"] = "pre"
 
-    def __post_init__(self) -> None:
+    @classmethod
+    def validate(cls) -> None:
         """校验 Transformer 各维度之间的必要约束."""
-        if self.d_model <= 0 or self.num_heads <= 0:
+        if cls.d_model <= 0 or cls.num_heads <= 0:
             raise ValueError("d_model 和 num_heads 必须大于 0")
-        if self.d_model % self.num_heads != 0:
+        if cls.d_model % cls.num_heads != 0:
             raise ValueError("d_model 必须能够被 num_heads 整除")
-        if self.d_feedforward <= 0:
+        if cls.d_feedforward <= 0:
             raise ValueError("d_feedforward 必须大于 0")
-        if self.encoder_num_layers <= 0 or self.decoder_num_layers <= 0:
+        if cls.encoder_num_layers <= 0 or cls.decoder_num_layers <= 0:
             raise ValueError("Encoder 和 Decoder 层数必须大于 0")
-        if not 0 <= self.dropout < 1:
+        if not 0 <= cls.dropout < 1:
             raise ValueError("dropout 必须在 [0, 1) 范围内")
-        if self.max_seq_length <= 0:
+        if cls.max_seq_length <= 0:
             raise ValueError("max_seq_length 必须大于 0")
-        if self.norm_first not in {"pre", "post"}:
+        if cls.norm_first not in {"pre", "post"}:
             raise ValueError("norm_first 必须是 pre 或 post")
 
-    def print_summary(self) -> None:
-        """打印模型配置摘要."""
-        print_config(self)
 
-
-@dataclass
-class TrainConfig:
+class TrainConfig(StaticConfig):
     """训练流程默认配置"""
 
     # 默认训练轮数,第一版先保持保守,便于快速跑通流程
@@ -271,23 +296,24 @@ class TrainConfig:
     # 是否显示 tqdm 进度条;测试或日志重定向场景可通过 CLI 关闭
     show_progress: bool = True
 
-    def __post_init__(self) -> None:
+    @classmethod
+    def validate(cls) -> None:
         """校验训练、优化器、调度器和早停参数."""
-        if self.epoch_count <= 0 or self.total_training_steps <= 0:
+        if cls.epoch_count <= 0 or cls.total_training_steps <= 0:
             raise ValueError("epoch_count 和 total_training_steps 必须大于 0")
-        if self.validation_interval <= 0 or self.validation_batch_count <= 0:
+        if cls.validation_interval <= 0 or cls.validation_batch_count <= 0:
             raise ValueError("验证间隔和验证 batch 数必须大于 0")
-        if self.learning_rate <= 0 or self.weight_decay < 0:
+        if cls.learning_rate <= 0 or cls.weight_decay < 0:
             raise ValueError("learning_rate 必须大于 0,weight_decay 不能小于 0")
-        if self.optimizer_type not in {"adam", "adamw", "sgd"}:
+        if cls.optimizer_type not in {"adam", "adamw", "sgd"}:
             raise ValueError("optimizer_type 必须是 adam、adamw 或 sgd")
-        if not 0 < self.optimizer_beta1 < 1 or not 0 < self.optimizer_beta2 < 1:
+        if not 0 < cls.optimizer_beta1 < 1 or not 0 < cls.optimizer_beta2 < 1:
             raise ValueError("Adam beta 参数必须在 (0, 1) 范围内")
-        if self.optimizer_eps <= 0:
+        if cls.optimizer_eps <= 0:
             raise ValueError("optimizer_eps 必须大于 0")
-        if self.sgd_momentum < 0:
+        if cls.sgd_momentum < 0:
             raise ValueError("sgd_momentum 不能小于 0")
-        if self.scheduler_type not in {
+        if cls.scheduler_type not in {
             "constant",
             "cosine",
             "step",
@@ -295,37 +321,32 @@ class TrainConfig:
             "cosine_warmup",
         }:
             raise ValueError("scheduler_type 不受支持")
-        if self.scheduler_warmup_steps < 0:
+        if cls.scheduler_warmup_steps < 0:
             raise ValueError("scheduler_warmup_steps 不能小于 0")
         if (
-            self.scheduler_type == "cosine_warmup"
-            and self.scheduler_warmup_steps > self.total_training_steps
+            cls.scheduler_type == "cosine_warmup"
+            and cls.scheduler_warmup_steps > cls.total_training_steps
         ):
             raise ValueError("scheduler_warmup_steps 不能超过总训练步数")
-        if not 0 <= self.scheduler_min_learning_rate_ratio <= 1:
+        if not 0 <= cls.scheduler_min_learning_rate_ratio <= 1:
             raise ValueError("最小学习率比例必须在 [0, 1] 范围内")
-        if self.scheduler_step_size <= 0 or self.scheduler_gamma <= 0:
+        if cls.scheduler_step_size <= 0 or cls.scheduler_gamma <= 0:
             raise ValueError("调度器 step_size 和 gamma 必须大于 0")
-        if self.early_stopping_patience <= 0:
+        if cls.early_stopping_patience <= 0:
             raise ValueError("early_stopping_patience 必须大于 0")
-        if self.early_stopping_min_delta < 0:
+        if cls.early_stopping_min_delta < 0:
             raise ValueError("early_stopping_min_delta 不能小于 0")
-        if self.early_stopping_mode not in {"min", "max"}:
+        if cls.early_stopping_mode not in {"min", "max"}:
             raise ValueError("early_stopping_mode 必须是 min 或 max")
-        if self.early_stopping_convergence_window <= 1:
+        if cls.early_stopping_convergence_window <= 1:
             raise ValueError("收敛检测窗口必须大于 1")
-        if self.early_stopping_convergence_threshold < 0:
+        if cls.early_stopping_convergence_threshold < 0:
             raise ValueError("收敛检测阈值不能小于 0")
-        if self.gradient_clip_norm <= 0 or self.log_interval <= 0:
+        if cls.gradient_clip_norm <= 0 or cls.log_interval <= 0:
             raise ValueError("梯度裁剪阈值和日志间隔必须大于 0")
 
-    def print_summary(self) -> None:
-        """打印训练配置摘要."""
-        print_config(self)
 
-
-@dataclass
-class InferenceConfig:
+class InferenceConfig(StaticConfig):
     """推理流程默认配置"""
 
     # 自回归生成的最大 token 数,包含起始 token 后续生成部分
@@ -334,11 +355,17 @@ class InferenceConfig:
     # 是否在自回归解码时显示 token 级进度条
     show_progress: bool = True
 
-    def __post_init__(self) -> None:
+    @classmethod
+    def validate(cls) -> None:
         """校验自回归生成长度."""
-        if self.max_generation_length <= 0:
+        if cls.max_generation_length <= 0:
             raise ValueError("max_generation_length 必须大于 0")
 
-    def print_summary(self) -> None:
-        """打印推理配置摘要."""
-        print_config(self)
+
+# 静态配置不会经历实例初始化,因此在模块加载时显式校验默认值.
+DataConfig.validate()
+TokenizerConfig.validate()
+DataLoaderConfig.validate()
+ModelConfig.validate()
+TrainConfig.validate()
+InferenceConfig.validate()

@@ -28,14 +28,14 @@ from configs.defaults import (
 
 def create_parser() -> argparse.ArgumentParser:
     """创建包含 train、eval、translate 和 prepare 的主解析器."""
-    # 每次创建解析器时都实例化独立默认配置,避免 CLI 修改类级默认值.
-    model_defaults = ModelConfig()
+    # argparse 直接读取静态配置类,不创建任何配置实例.
+    model_defaults = ModelConfig
     # DataLoader 参数单独归类,避免把数据并发设置混入模型配置.
-    loader_defaults = DataLoaderConfig()
+    loader_defaults = DataLoaderConfig
     # 训练默认值覆盖训练循环、优化器、调度器、早停和日志.
-    train_defaults = TrainConfig()
+    train_defaults = TrainConfig
     # 推理默认值只负责控制自回归生成过程.
-    inference_defaults = InferenceConfig()
+    inference_defaults = InferenceConfig
 
     # RawDescriptionHelpFormatter 会保留帮助文本中的换行和分组结构.
     parser = argparse.ArgumentParser(

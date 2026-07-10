@@ -33,18 +33,13 @@ def prepare_data(force: bool = False) -> None:
 
 
 def train_model(
-    model_config: ModelConfig | None = None,
-    train_config: TrainConfig | None = None,
-    loader_config: DataLoaderConfig | None = None,
+    model_config: type[ModelConfig] = ModelConfig,
+    train_config: type[TrainConfig] = TrainConfig,
+    loader_config: type[DataLoaderConfig] = DataLoaderConfig,
     resume_from: Path | None = None,
 ) -> dict[str, list[float]]:
     """根据完整配置创建依赖并执行训练."""
-    # 为每次调用创建独立配置实例,避免 menu 和 CLI 之间共享可变状态.
-    model_config = model_config or ModelConfig()
-    # TrainConfig 同时控制优化器、调度器、早停、日志和训练循环.
-    train_config = train_config or TrainConfig()
-    # DataLoaderConfig 单独控制 batch、worker 和自动准备行为.
-    loader_config = loader_config or DataLoaderConfig()
+    # 所有配置均为静态类,业务层只读取类属性,不创建配置实例.
 
     # DataLoader 输出字典中的每个 Tensor 均为二维 long Tensor:
     # source_ids=(batch, source_length),target_*=(batch, target_length).
@@ -137,7 +132,7 @@ def load_model_from_checkpoint(
 def evaluate_model(
     checkpoint_path: Path = paths.BEST_MODEL_PATH,
     split: str = "test",
-    loader_config: DataLoaderConfig | None = None,
+    loader_config: type[DataLoaderConfig] = DataLoaderConfig,
     device: torch.device | str = TrainConfig.device,
     max_batches: int | None = None,
     show_progress: bool = True,
@@ -146,8 +141,7 @@ def evaluate_model(
     # split 在 parser 中已经限制取值;此处保留运行时校验供 Python API 使用.
     if split not in {"train", "val", "test"}:
         raise ValueError("split 必须是 train、val 或 test")
-    # 未传入配置时使用独立默认实例,避免复用上一次评估的修改.
-    loader_config = loader_config or DataLoaderConfig()
+    # DataLoader 配置通过静态类传入,默认直接使用全局默认配置类.
     # 一次创建三个 DataLoader,再通过映射选择目标切分,保持数据参数一致.
     train_loader, val_loader, test_loader = create_dataloaders(
         batch_size=loader_config.batch_size,
@@ -179,11 +173,10 @@ def translate_text(
     text: str,
     checkpoint_path: Path = paths.BEST_MODEL_PATH,
     device: torch.device | str = TrainConfig.device,
-    inference_config: InferenceConfig | None = None,
+    inference_config: type[InferenceConfig] = InferenceConfig,
 ) -> str:
     """加载模型和 tokenizer,并执行一条英文到中文的贪心翻译."""
     # 推理配置控制最大目标长度和 token 级 tqdm 是否显示.
-    inference_config = inference_config or InferenceConfig()
     # load_translator 负责恢复与 checkpoint 配套的 Transformer 权重.
     translator = load_translator(
         checkpoint_path=checkpoint_path,

@@ -1,7 +1,5 @@
 """训练组件和轻量训练闭环测试."""
 
-from dataclasses import replace
-
 import pytest
 import torch
 import torch.nn as nn
@@ -142,8 +140,7 @@ def test_trainer_runs_and_saves_checkpoints(tmp_path) -> None:
     """端到端训练闭环:构造 Trainer → 跑 2 个 epoch → 验证损失记录和 checkpoint 生成"""
     dataloader = create_tiny_dataloader()
     # 使用最小化配置以加速测试:2 epoch、禁用 AMP/TensorBoard、CPU 运行
-    config = replace(
-        TrainConfig(),
+    config = TrainConfig.withOverrides(
         epoch_count=2,
         total_training_steps=2,
         validation_interval=1,

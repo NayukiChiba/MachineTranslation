@@ -41,10 +41,10 @@ if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 
 
-def build_model_config(args: argparse.Namespace) -> ModelConfig:
-    """把 train 子命令中的模型参数转换为经过校验的 ModelConfig."""
+def configureModel(args: argparse.Namespace) -> type[ModelConfig]:
+    """根据 train 子命令返回经过校验的静态 ModelConfig 类."""
     # 每一个字段都显式映射,避免 argparse 名称变化时静默漏掉配置.
-    return ModelConfig(
+    return ModelConfig.withOverrides(
         d_model=args.d_model,
         num_heads=args.num_heads,
         d_feedforward=args.d_feedforward,
@@ -56,15 +56,15 @@ def build_model_config(args: argparse.Namespace) -> ModelConfig:
     )
 
 
-def build_loader_config(args: argparse.Namespace) -> DataLoaderConfig:
-    """根据当前子命令可用字段构建 DataLoaderConfig."""
+def configureLoader(args: argparse.Namespace) -> type[DataLoaderConfig]:
+    """根据当前子命令返回静态 DataLoaderConfig 类."""
     # train、eval 都有 batch_size 和 num_workers,其他入口使用默认值.
     batch_size = getattr(args, "batch_size", DataLoaderConfig.batch_size)
     # Windows 默认 worker_count=0,用户可以在 CLI 中按机器能力覆盖.
     worker_count = getattr(args, "num_workers", DataLoaderConfig.worker_count)
     # 训练入口支持强制重建数据;评估入口默认只补齐缺失产物.
     force_prepare = getattr(args, "force_prepare", False)
-    return DataLoaderConfig(
+    return DataLoaderConfig.withOverrides(
         batch_size=batch_size,
         worker_count=worker_count,
         auto_prepare=True,
@@ -72,10 +72,9 @@ def build_loader_config(args: argparse.Namespace) -> DataLoaderConfig:
     )
 
 
-def build_train_config(args: argparse.Namespace) -> TrainConfig:
-    """把 CLI 中的训练、优化器、调度器和早停参数合并为 TrainConfig."""
-    # TrainConfig.__post_init__ 会验证数值范围和 warmup/total_steps 关系.
-    return TrainConfig(
+def configureTrain(args: argparse.Namespace) -> type[TrainConfig]:
+    """根据 CLI 参数返回经过校验的静态 TrainConfig 类."""
+    return TrainConfig.withOverrides(
         epoch_count=args.epochs,
         total_training_steps=args.total_steps,
         validation_interval=args.validation_interval,
@@ -107,10 +106,10 @@ def build_train_config(args: argparse.Namespace) -> TrainConfig:
     )
 
 
-def build_inference_config(args: argparse.Namespace) -> InferenceConfig:
-    """把 translate 子命令参数转换为推理配置."""
+def configureInference(args: argparse.Namespace) -> type[InferenceConfig]:
+    """根据 translate 子命令返回静态 InferenceConfig 类."""
     # 推理阶段只关心生成长度和进度显示,模型结构参数从 checkpoint 自动恢复.
-    return InferenceConfig(
+    return InferenceConfig.withOverrides(
         max_generation_length=args.max_length,
         show_progress=args.progress,
     )
@@ -126,20 +125,20 @@ def prepare_main(args: argparse.Namespace) -> None:
 def train_main(args: argparse.Namespace) -> None:
     """训练主入口:构建配置、展示配置、创建训练管线并开始训练."""
     # 先构建并校验模型配置,非法维度会在读取大数据前快速失败.
-    model_config = build_model_config(args)
+    model_config = configureModel(args)
     # DataLoader 配置决定 batch 内张量第一维和数据读取并发数.
-    loader_config = build_loader_config(args)
+    loader_config = configureLoader(args)
     # 训练配置覆盖 optimizer、scheduler、early stopping、AMP 和日志行为.
-    train_config = build_train_config(args)
+    train_config = configureTrain(args)
 
     # 明确展示最终生效值,方便把终端输出直接作为实验记录.
     print("=" * 60)
     print("模型配置")
-    model_config.print_summary()
+    model_config.printSummary()
     print("\n数据加载配置")
-    loader_config.print_summary()
+    loader_config.printSummary()
     print("\n训练配置")
-    train_config.print_summary()
+    train_config.printSummary()
     print("=" * 60)
 
     # argparse 返回字符串路径;业务层统一使用 pathlib.Path.
@@ -156,11 +155,11 @@ def train_main(args: argparse.Namespace) -> None:
 def eval_main(args: argparse.Namespace) -> None:
     """评估主入口:选择数据切分并计算 loss、困惑度和 token accuracy."""
     # eval 只需要 DataLoader 参数,不会修改 checkpoint 中保存的模型结构.
-    loader_config = build_loader_config(args)
+    loader_config = configureLoader(args)
     print("=" * 60)
     print(f"评估数据集: {args.split}")
     print(f"检查点: {args.checkpoint}")
-    loader_config.print_summary()
+    loader_config.printSummary()
     print("=" * 60)
 
     # show_progress 控制评估 batch 级 tqdm,便于 CI 或日志文件关闭动态输出.
@@ -177,7 +176,7 @@ def eval_main(args: argparse.Namespace) -> None:
 def translate_main(args: argparse.Namespace) -> None:
     """翻译主入口:支持命令行单句和持续交互两种模式."""
     # 推理配置控制目标序列最大长度和 token 级进度条.
-    inference_config = build_inference_config(args)
+    inference_config = configureInference(args)
     # checkpoint 结构中保存模型参数,tokenizer 路径则来自 configs.paths.
     checkpoint_path = Path(args.checkpoint)
 
