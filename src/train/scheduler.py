@@ -184,7 +184,7 @@ def create_scheduler(
                 f"cosine_warmup 调度器要求 warmup_steps >= 0: {warmup_steps}"
             )
 
-        def calculateLrFactor(current_step: int) -> float:
+        def calculate_lr_factor(current_step: int) -> float:
             """计算当前 step 的学习率缩放比例"""
             # warmup 阶段从 0 线性增长到 1,避免训练初期更新过猛.
             if current_step < warmup_steps:
@@ -202,7 +202,7 @@ def create_scheduler(
             cosine_decay = 0.5 * (1.0 + math.cos(math.pi * progress))
             return min_lr_ratio + (1.0 - min_lr_ratio) * cosine_decay
 
-        return LambdaLR(optimizer, lr_lambda=calculateLrFactor)
+        return LambdaLR(optimizer, lr_lambda=calculate_lr_factor)
 
     # 类型注解可以拦住大多数误用;运行时仍保留检查,方便配置文件错误定位.
     raise ValueError(

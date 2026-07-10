@@ -15,8 +15,8 @@
     - trainer.py 是唯一调用方
 
 为什么 Transformer 推荐 AdamW:
-    Adam 的 weight decay 实现等价于 L2 正则化, 与自适应学习率耦合。
-    AdamW 将 weight decay 作为独立衰减项, 与梯度更新解耦。
+    Adam 的 weight decay 实现等价于 L2 正则化, 与自适应学习率耦合.
+    AdamW 将 weight decay 作为独立衰减项, 与梯度更新解耦.
     论文: "Decoupled Weight Decay Regularization" (Loshchilov & Hutter, 2019)
 """
 
