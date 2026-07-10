@@ -39,6 +39,7 @@ MachineTranslation/
 │   ├── __init__.py
 │   ├── cli/                     # 命令行入口
 │   │   ├── __init__.py
+│   │   ├── actions.py           # CLI 和菜单共用任务管线
 │   │   ├── parser.py
 │   │   └── menu.py
 │   ├── data/                    # 数据下载、清洗、分词、词表构建、DataLoader
@@ -52,7 +53,7 @@ MachineTranslation/
 │   │   └── vocabulary.py
 │   ├── evaluate/                # 评估流程和指标统计
 │   │   ├── __init__.py
-│   │   └── metrics.py
+│   │   ├── metrics.py
 │   │   ├── visualize.py
 │   │   └── evaluator.py
 │   ├── inference/               # 模型加载和翻译接口
@@ -79,7 +80,11 @@ MachineTranslation/
 │   ├── test_vocabulary.py
 │   ├── test_dataset.py
 │   ├── test_mask.py
-│   └── test_transformer.py
+│   ├── test_transformer.py
+│   ├── test_train_components.py
+│   ├── test_metrics.py
+│   ├── test_translator.py
+│   └── test_entrypoint.py
 ├── .pre-commit-config.yaml
 ├── pyproject.toml
 └── README.md
@@ -95,6 +100,8 @@ MachineTranslation/
 - 启动评估任务
 - 启动单句或批量翻译
 - 读取配置路径和运行参数
+- 无参数启动时提供交互菜单
+- CLI 和菜单复用 `actions.py`，避免业务流程重复
 
 ### `data`
 
@@ -147,6 +154,13 @@ MachineTranslation/
 - `utils.py` — 随机种子、设备、参数统计、梯度裁剪
 - `trainer.py` — 训练主循环，作为唯一调度者
 
+训练模块遵循单向依赖：`optimizer`、`scheduler`、`early_stopping`、
+`checkpoint`、`logger` 和 `utils` 彼此不导入，只有 `trainer.py` 负责组合。
+`Trainer` 支持注入这些组件，便于独立测试和替换实现。
+
+训练、验证、独立评估、逐 token 翻译和各数据处理阶段均使用 tqdm 展示进度。
+CLI 可通过 `--no-progress` 关闭动态进度条。
+
 ## 建议实现顺序
 
 1. 完成词表、分词和 Dataset 构建
@@ -190,18 +204,69 @@ uv run ruff check .
 uv run pytest
 ```
 
-## 数据约定
+## 运行方式
 
-建议平行语料使用 TSV 格式保存：
+`main.py` 是项目唯一入口。入口结构参考同级 `Attention` 项目：
+`src/cli/parser.py` 只声明参数，`main.py` 提供 `train_main`、`eval_main`、
+`translate_main`，不携带参数时进入 `src/cli/menu.py` 的交互菜单。
 
-```text
-source<TAB>target
-hello<TAB>你好
-how are you<TAB>你好吗
+启动交互菜单：
+
+```bash
+uv run python main.py
 ```
 
-完整数据集放在 `datasets/` 下，不提交到 Git。可以把极小样例数据放入
-`data/samples/`，用于测试和演示。
+准备数据：
+
+```bash
+uv run python main.py prepare
+```
+
+训练模型：
+
+```bash
+uv run python main.py train --epochs 10 --batch-size 32
+```
+
+覆盖模型、优化器、调度器和运行配置：
+
+```bash
+uv run python main.py train --d-model 256 --num-heads 8 --encoder-layers 4 --decoder-layers 4 --optimizer adamw --lr 3e-4 --scheduler cosine_warmup --warmup-steps 500 --device cuda
+```
+
+从检查点恢复训练：
+
+```bash
+uv run python main.py train --resume outputs/checkpoints/last_model.pth
+```
+
+评估与翻译：
+
+```bash
+uv run python main.py eval --checkpoint outputs/checkpoints/best_model.pth --split test
+uv run python main.py translate "hello world" --checkpoint outputs/checkpoints/best_model.pth --max-length 128
+```
+
+`translate` 不提供文本时会进入持续交互翻译模式。`eval` 也接受兼容别名
+`evaluate`，但文档和测试统一使用 `eval`。
+
+查看完整参数：
+
+```bash
+uv run python main.py --help
+```
+
+## 数据约定
+
+数据管线使用 JSONL 保存平行语料。raw 和 interim 阶段的单条数据格式为：
+
+```json
+{"en": "hello", "zh": "你好"}
+```
+
+完整数据集默认放在项目的 `datasets/` 下，不提交到 Git。可通过环境变量
+`MACHINE_TRANSLATION_DATASETS_DIR` 覆盖数据根目录。所有具体文件路径统一由
+`configs/paths.py` 管理。
 
 ## 输出约定
 
@@ -226,5 +291,6 @@ how are you<TAB>你好吗
 
 ## 当前状态
 
-项目处于初始化阶段。当前 README 提供推荐架构和实现路线，后续代码应围绕
-“手写 Attention 的机器翻译实验项目”逐步落地。
+项目已具备从数据准备、Transformer 训练、早停和检查点恢复，到独立评估、
+贪心翻译、日志记录和训练曲线保存的完整基础闭环。CLI、交互菜单和测试均已
+接入，后续可以继续扩展 beam search、标准 BLEU 和 Attention 可视化。
