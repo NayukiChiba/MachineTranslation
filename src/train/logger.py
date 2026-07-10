@@ -32,16 +32,22 @@
     logger.close()
 """
 
+import logging
+import sys
+from datetime import datetime
+from numbers import Real
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import torch.nn as nn
 
 from configs import paths
 from configs.defaults import TrainConfig
 
-# 尝试导入 TensorBoard
-# from torch.utils.tensorboard import SummaryWriter
+try:
+    from torch.utils.tensorboard import SummaryWriter
+except ImportError:
+    SummaryWriter = None
 
 
 class Logger:
@@ -68,6 +74,7 @@ class Logger:
         name: str = TrainConfig.logger_name,
         log_dir: Path = paths.LOGS_DIR,
         tensorboard_dir: Path = paths.TENSORBOARD_DIR,
+        enable_tensorboard: bool = TrainConfig.enable_tensorboard,
     ) -> None:
         # 需要初始化的属性:
         #   self.name = name
@@ -82,7 +89,14 @@ class Logger:
         #   - __init__ 只保存配置, 不创建 handler
         #   - 实际初始化在 start() 中完成
         #   - 这样设计是为了让 trainer 可以在调用 start() 前做其他初始化
-        raise NotImplementedError("TODO: 实现 Logger.__init__")
+        self.name = name
+        self.log_dir = Path(log_dir)
+        self.tensorboard_dir = Path(tensorboard_dir)
+        self.enable_tensorboard = enable_tensorboard
+        self.logger: logging.Logger | None = None
+        self.writer: Any = None
+        self.timestamp: str | None = None
+        self.log_file: Path | None = None
 
     def start(self) -> "Logger":
         """
@@ -126,34 +140,84 @@ class Logger:
             8. 打印启动信息(日志文件路径 + TensorBoard 目录)
             9. return self
         """
-        raise NotImplementedError("TODO: 实现 Logger.start")
+        if self.logger is not None:
+            return self
+
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+        self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        self.log_file = self.log_dir / f"{self.name}_{self.timestamp}.log"
+
+        logger = logging.getLogger(f"{self.name}_{self.timestamp}")
+        logger.setLevel(logging.DEBUG)
+        logger.propagate = False
+
+        file_handler = logging.FileHandler(self.log_file, encoding="utf-8")
+        file_handler.setLevel(logging.DEBUG)
+        file_handler.setFormatter(
+            logging.Formatter(
+                "%(asctime)s | %(levelname)-8s | %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+            )
+        )
+
+        stream_handler = logging.StreamHandler(sys.stdout)
+        stream_handler.setLevel(logging.INFO)
+        stream_handler.setFormatter(logging.Formatter("%(levelname)-8s | %(message)s"))
+
+        logger.addHandler(file_handler)
+        logger.addHandler(stream_handler)
+        self.logger = logger
+
+        if self.enable_tensorboard and SummaryWriter is not None:
+            tensorboard_log_dir = self.tensorboard_dir / self.timestamp
+            tensorboard_log_dir.mkdir(parents=True, exist_ok=True)
+            self.writer = SummaryWriter(log_dir=str(tensorboard_log_dir))
+        elif self.enable_tensorboard:
+            logger.warning("TensorBoard 不可用,已仅启用控制台和文件日志")
+
+        logger.info("日志文件: %s", self.log_file)
+        return self
 
     def close(self) -> None:
         """关闭 logger, 清理 TensorBoard writer 和 logging handler"""
         # 步骤:
         #   1. 关闭 TensorBoard: if self.writer: self.writer.close()
         #   2. 关闭 logging handlers: 遍历 self.logger.handlers, close + remove
-        raise NotImplementedError("TODO: 实现 Logger.close")
+        if self.writer is not None:
+            self.writer.close()
+            self.writer = None
+
+        if self.logger is not None:
+            for handler in list(self.logger.handlers):
+                handler.close()
+                self.logger.removeHandler(handler)
+            self.logger = None
 
     def info(self, message: str) -> None:
         """INFO 级别日志(终端可见)"""
         # 步骤: if self.logger: self.logger.info(message)
-        raise NotImplementedError("TODO: 实现 Logger.info")
+        self._require_logger().info(message)
 
     def debug(self, message: str) -> None:
         """DEBUG 级别日志(仅文件可见)"""
         # 步骤: if self.logger: self.logger.debug(message)
-        raise NotImplementedError("TODO: 实现 Logger.debug")
+        self._require_logger().debug(message)
 
     def warning(self, message: str) -> None:
         """WARNING 级别日志"""
         # 步骤: if self.logger: self.logger.warning(message)
-        raise NotImplementedError("TODO: 实现 Logger.warning")
+        self._require_logger().warning(message)
 
     def error(self, message: str) -> None:
         """ERROR 级别日志"""
         # 步骤: if self.logger: self.logger.error(message)
-        raise NotImplementedError("TODO: 实现 Logger.error")
+        self._require_logger().error(message)
+
+    def _require_logger(self) -> logging.Logger:
+        """返回已启动的 logger,未启动时明确报错"""
+        if self.logger is None:
+            raise RuntimeError("Logger 尚未启动,请先调用 start()")
+        return self.logger
 
     def log_config(self, config: dict) -> None:
         """
@@ -168,7 +232,12 @@ class Logger:
         #   3. self.info("-" * 60)
         #   4. 遍历 config.items(), 逐行打印: self.info(f"  {k}: {v}")
         #   5. self.info("=" * 60)
-        raise NotImplementedError("TODO: 实现 Logger.log_config")
+        self.info("=" * 60)
+        self.info("训练配置")
+        self.info("-" * 60)
+        for key, value in config.items():
+            self.info(f"  {key}: {value}")
+        self.info("=" * 60)
 
     def log_model_info(self, model: nn.Module) -> None:
         """
@@ -184,7 +253,20 @@ class Logger:
         #   2. self.info(f"可训练参数: {trainable:,}")
         #   3. self.info(f"总参数: {total:,}")
         #   4. 打印设备信息: next(model.parameters()).device
-        raise NotImplementedError("TODO: 实现 Logger.log_model_info")
+        # 统计可训练参数数量(requires_grad=True)
+        trainable_count = sum(
+            parameter.numel()
+            for parameter in model.parameters()
+            if parameter.requires_grad
+        )
+        # 统计全部参数数量
+        total_count = sum(parameter.numel() for parameter in model.parameters())
+        # 获取模型所在设备
+        first_parameter = next(model.parameters(), None)
+        device = first_parameter.device if first_parameter is not None else "无参数"
+        self.info(f"可训练参数: {trainable_count:,}")
+        self.info(f"总参数: {total_count:,}")
+        self.info(f"模型设备: {device}")
 
     def log_metrics(self, step: int, metrics: dict, prefix: str = "") -> None:
         """
@@ -213,7 +295,21 @@ class Logger:
                            tag = f"{prefix}/{key}" if prefix else key
                            self.writer.add_scalar(tag, value, step)
         """
-        raise NotImplementedError("TODO: 实现 Logger.log_metrics")
+        # 格式化指标为字符串,浮点数保留4位小数
+        metrics_text = " | ".join(
+            f"{key}: {value:.4f}" if isinstance(value, float) else f"{key}: {value}"
+            for key, value in metrics.items()
+        )
+        # 构建带前缀的日志消息,DEBUG级别避免刷屏
+        message_prefix = f"[{prefix}] " if prefix else ""
+        self.debug(f"{message_prefix}Step {step:6d} | {metrics_text}")
+
+        # 写入 TensorBoard 标量曲线
+        if self.writer is not None:
+            for key, value in metrics.items():
+                if isinstance(value, Real):
+                    tag = f"{prefix}/{key}" if prefix else key
+                    self.writer.add_scalar(tag, float(value), step)
 
     def log_epoch(
         self,
@@ -239,4 +335,27 @@ class Logger:
                - train/{key}: epoch
                - val/{key}: epoch
         """
-        raise NotImplementedError("TODO: 实现 Logger.log_epoch")
+
+        def format_metrics(metrics: dict) -> str:
+            """格式化指标字典为字符串,浮点数保留4位小数"""
+            return " | ".join(
+                f"{key}: {value:.4f}" if isinstance(value, float) else f"{key}: {value}"
+                for key, value in metrics.items()
+            )
+
+        # 打印 epoch 摘要到头(INFO级别,终端可见)
+        self.info("=" * 60)
+        self.info(f"Epoch {epoch + 1}")
+        self.info(f"train | {format_metrics(train_metrics)}")
+        if val_metrics is not None:
+            self.info(f"val   | {format_metrics(val_metrics)}")
+        self.info("=" * 60)
+
+        # 写入 TensorBoard(以epoch为横轴)
+        if self.writer is not None:
+            for prefix, metrics in (("train", train_metrics), ("val", val_metrics)):
+                if metrics is None:
+                    continue
+                for key, value in metrics.items():
+                    if isinstance(value, Real):
+                        self.writer.add_scalar(f"{prefix}/{key}", float(value), epoch)
