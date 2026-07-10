@@ -21,13 +21,13 @@
 """
 
 import torch.nn as nn
-from decoder import TransformerDecoder
-from embedding import PositionalEncoding, TokenEmbedding
-from encoder import TransformerEncoder
-from mask import create_causal_mask, create_padding_mask
 from torch import Tensor
 
 from configs.defaults import ModelConfig, TokenizerConfig
+from src.model.decoder import TransformerDecoder
+from src.model.embedding import PositionalEncoding, TokenEmbedding
+from src.model.encoder import TransformerEncoder
+from src.model.mask import create_causal_mask, create_padding_mask
 
 
 class Transformer(nn.Module):
@@ -149,6 +149,34 @@ class Transformer(nn.Module):
         #    self.d_model = d_model
         self.pad_id = pad_id
         self.d_model = d_model
+        self.config = {
+            "vocab_size": vocab_size,
+            "d_model": d_model,
+            "num_heads": num_heads,
+            "d_feedforward": d_feedforward,
+            "encoder_num_layers": encoder_num_layers,
+            "decoder_num_layers": decoder_num_layers,
+            "dropout": dropout,
+            "max_seq_length": max_seq_length,
+            "pad_id": pad_id,
+            "norm_first": norm_first,
+        }
+
+    @classmethod
+    def from_config(cls, config: dict[str, object]) -> "Transformer":
+        """
+        从检查点中的模型配置字典创建 Transformer 实例
+
+        用于从保存的检查点恢复模型,配合 checkpoint.py 中的 load_checkpoint 使用.
+        使用 @classmethod 装饰器确保在子类化时也能正确创建对应类型的实例.
+
+        Args:
+            config (dict[str, object]): 模型配置字典,键名与 __init__ 参数名一致
+
+        Returns:
+            Transformer: 根据配置创建的模型实例
+        """
+        return cls(**config)
 
     def encode(
         self, source_ids: Tensor, source_padding_mask: Tensor | None = None
@@ -174,8 +202,14 @@ class Transformer(nn.Module):
         #            是 (batch, source_length), 需要 squeeze 掉中间两个维度
         #            (或者在 mask.py 中新增一个返回 (batch, seq_len) 版本的函数)
         if source_padding_mask is None:
+            # 根据 pad_id 自动生成四维 padding mask: (batch, 1, 1, source_length)
             source_padding_mask = create_padding_mask(x=source_ids, pad_id=self.pad_id)
+        if source_padding_mask.dim() == 4:
+            # 将四维 mask 降为二维 (batch, source_length),适配 MultiheadAttention 的 key_padding_mask 参数
             source_padding_mask = source_padding_mask.squeeze(1).squeeze(1)
+        if source_padding_mask.dim() != 2:
+            # 断言 mask 维度正确,防止传入错误形状的 mask 导致静默失效
+            raise ValueError("source_padding_mask 必须是二维或标准四维 mask")
         #   2. x = self.source_embedding(source_ids)
         #      → shape (batch, source_length, d_model)
         x = self.source_embedding(source_ids)
@@ -212,6 +246,36 @@ class Transformer(nn.Module):
         Returns:
             Tensor: logits, shape = (batch, target_length, vocab_size)
         """
+        # --- 处理 target padding mask ---
+        # padding mask 屏蔽目标序列中的 <pad> token,防止模型关注填充位置
+        if target_padding_mask is None:
+            # 自动生成四维 padding mask 并 squeeze 为二维 (batch, target_length)
+            target_padding_mask = (
+                create_padding_mask(target_ids, pad_id=self.pad_id)
+                .squeeze(1)
+                .squeeze(1)
+            )
+        elif target_padding_mask.dim() == 4:
+            # 外部传入的四维 mask 需要降维才能传给 MultiheadAttention
+            target_padding_mask = target_padding_mask.squeeze(1).squeeze(1)
+
+        # --- 处理 target causal mask ---
+        # causal mask 确保每个位置只能关注自身及之前的 token(自回归约束)
+        if target_causal_mask is None:
+            # 自动生成 causal mask 并 squeeze 为二维 (target_length, target_length)
+            target_causal_mask = (
+                create_causal_mask(target_ids.size(1), device=target_ids.device)
+                .squeeze(0)
+                .squeeze(0)
+            )
+        elif target_causal_mask.dim() == 4:
+            target_causal_mask = target_causal_mask.squeeze(0).squeeze(0)
+
+        # --- 处理 source padding mask ---
+        # 对已传入的 source padding mask 做同样的降维处理
+        if source_padding_mask is not None and source_padding_mask.dim() == 4:
+            source_padding_mask = source_padding_mask.squeeze(1).squeeze(1)
+
         # 步骤:
         #   1. x = self.target_embedding(target_ids)
         #      → shape (batch, target_length, d_model)
@@ -277,6 +341,7 @@ class Transformer(nn.Module):
         #      → shape (batch, 1, 1, source_length)
         #      注意: 传给 Encoder 的 key_padding_mask 需要 (batch, source_length) 形状
         #            所以可能需要 squeeze(1).squeeze(1) 或将 mask 转为合适的形状
+        # 生成源序列 padding mask 并降维: (batch, 1, 1, src_len) → (batch, src_len)
         source_padding_mask = create_padding_mask(source_ids, pad_id=self.pad_id)
         source_padding_mask = source_padding_mask.squeeze(1).squeeze(1)
         #   2. source_embed = self.source_embedding(source_ids)
@@ -302,11 +367,15 @@ class Transformer(nn.Module):
         #
         #      同样, key_padding_mask 传给 MultiheadAttention 时需要
         #      (batch, target_length) 形状
+        # 生成目标序列 padding mask: (batch, 1, 1, tgt_len) → (batch, tgt_len)
         target_padding_mask = (
             create_padding_mask(target_ids, pad_id=self.pad_id).squeeze(1).squeeze(1)
         )
+        # 生成目标序列 causal mask: (1, 1, tgt_len, tgt_len) → (tgt_len, tgt_len)
         target_causal_mask = (
-            create_causal_mask(target_ids.size(1)).squeeze(1).squeeze(1)
+            create_causal_mask(target_ids.size(1), device=target_ids.device)
+            .squeeze(0)
+            .squeeze(0)
         )
         #   6. target_embed = self.target_embedding(target_ids)
         #      → shape (batch, target_length, d_model)

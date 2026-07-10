@@ -59,6 +59,16 @@ class TransformerEncoderLayer(nn.Module):
         dropout: float = ModelConfig.dropout,
         norm_first: str = ModelConfig.norm_first,
     ) -> None:
+        """
+        初始化单层 Encoder 的各个子层
+
+        Args:
+            d_model: 模型隐藏维度,默认 512
+            num_heads: 多头注意力头数,默认 8
+            d_feedforward: 前馈网络隐藏层维度,默认 2048
+            dropout: dropout 概率,默认 0.1
+            norm_first: 归一化顺序,"pre" 或 "post",默认 "pre"
+        """
         super().__init__()
         # 初始化各个子层
         # 需要创建:
@@ -84,7 +94,7 @@ class TransformerEncoderLayer(nn.Module):
         #   4. self.dropout — 公用 Dropout
         #      提示: nn.Dropout(dropout)
         self.dropout = nn.Dropout(dropout)
-        self.norm_first = norm_first
+        self.norm_first = norm_first  # 控制 Pre-LN 或 Post-LN 模式
 
     def forward(self, x: Tensor, source_padding_mask: Tensor | None = None) -> Tensor:
         """
@@ -161,6 +171,20 @@ class TransformerEncoder(nn.Module):
         dropout: float = ModelConfig.dropout,
         norm_first: str = ModelConfig.norm_first,
     ) -> None:
+        """
+        初始化多层 Encoder
+
+        使用 nn.ModuleList 堆叠 num_layers 个 TransformerEncoderLayer,
+        不能用 nn.Sequential 是因为每一层的 forward 需要传入 padding mask
+
+        Args:
+            d_model: 模型隐藏维度
+            num_heads: 注意力头数
+            d_feedforward: 前馈网络隐藏层维度
+            num_layers: Encoder 层数,默认 6
+            dropout: dropout 概率
+            norm_first: 归一化顺序,"pre" 或 "post"
+        """
         super().__init__()
         # 步骤:
         #   1. 用 nn.ModuleList 堆叠 num_layers 个 TransformerEncoderLayer
@@ -180,7 +204,9 @@ class TransformerEncoder(nn.Module):
                 for _ in range(num_layers)
             ]
         )  # 替换为 nn.ModuleList(...)
-        self.final_norm = nn.LayerNorm(d_model) if norm_first == "pre" else None
+        self.final_norm = (
+            nn.LayerNorm(d_model) if norm_first == "pre" else None
+        )  # Pre-LN 最后额外归一化
 
     def forward(self, x: Tensor, source_padding_mask: Tensor | None = None) -> Tensor:
         """

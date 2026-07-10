@@ -12,9 +12,9 @@ Transformer Decoder 模块
       → FeedForward → Add & Norm
 
 说明:
-    - Self-Attention 中 Q、K、V 都来自 Decoder 自身输入，但需要用 causal mask
+    - Self-Attention 中 Q、K、V 都来自 Decoder 自身输入,但需要用 causal mask
       防止看到未来 token
-    - Cross-Attention 中 Q 来自 Decoder，K、V 来自 Encoder 输出
+    - Cross-Attention 中 Q 来自 Decoder,K、V 来自 Encoder 输出
     - padding mask 用于屏蔽 <pad> token
     - FeedForward 与 Encoder 中的结构相同
 """
@@ -75,6 +75,19 @@ class TransformerDecoderLayer(nn.Module):
         norm_first: str = ModelConfig.norm_first,
     ) -> None:
         super().__init__()
+        """
+        初始化单层Transformer Decoder
+
+        创建Masked多头自注意力、交叉注意力、前馈网络、
+        三个LayerNorm层以及Dropout模块.
+
+        Args:
+            d_model (int): 模型隐藏维度, 默认512
+            num_heads (int): 多头注意力头数, 默认8
+            d_feedforward (int): 前馈网络隐藏层维度, 默认2048
+            dropout (float): dropout概率, 默认0.1
+            norm_first (str): LayerNorm放置策略, "pre"或"post"
+        """
         # 需要创建:
         #   1. self.self_attention — Masked 多头自注意力
         #      提示: nn.MultiheadAttention(embed_dim=d_model, num_heads=num_heads,
@@ -203,25 +216,29 @@ class TransformerDecoderLayer(nn.Module):
         #
         #   4. return x
         if self.norm_first == "pre":
+            # Pre-LN风格: 先归一化再计算, 最后残差连接
+            # 子层1: Masked多头自注意力(带causal mask)
             x_normed = self.norm1(x)
             attention_output, _ = self.multi_head_attention(
                 query=x_normed,
                 key=x_normed,
                 value=x_normed,
-                attn_mask=target_causal_mask,
-                key_padding_mask=target_padding_mask,
+                attn_mask=target_causal_mask,  # 防止看到未来token
+                key_padding_mask=target_padding_mask,  # 忽略<pad>
             )
             x = x + self.dropout(attention_output)
 
+            # 子层2: 交叉注意力(Q=Decoder, K/V=Encoder)
             x_normed = self.norm2(x)
             cross_output, _ = self.cross_attention(
                 query=x_normed,
-                key=encoder_output,
-                value=encoder_output,
+                key=encoder_output,  # Encoder输出
+                value=encoder_output,  # Encoder输出
                 key_padding_mask=source_padding_mask,
             )
             x = x + self.dropout(cross_output)
 
+            # 子层3: 前馈网络
             x = x + self.dropout(self.feed_forward(self.norm3(x)))
             return x
         # 关键区别:
@@ -275,6 +292,20 @@ class TransformerDecoder(nn.Module):
         norm_first: str = ModelConfig.norm_first,
     ) -> None:
         super().__init__()
+        """
+        初始化堆叠式Transformer Decoder
+
+        使用nn.ModuleList堆叠多层TransformerDecoderLayer,
+        并根据norm_first策略决定是否添加最终的LayerNorm.
+
+        Args:
+            d_model (int): 模型隐藏维度
+            num_heads (int): 注意力头数
+            d_feedforward (int): 前馈网络隐藏层维度
+            num_layers (int): Decoder层数, 默认6
+            dropout (float): dropout概率
+            norm_first (str): LayerNorm放置策略, "pre"或"post"
+        """
         # 步骤:
         #   1. 用 nn.ModuleList 堆叠 num_layers 个 TransformerDecoderLayer
         #      注意: 必须用 ModuleList 而非 Sequential,

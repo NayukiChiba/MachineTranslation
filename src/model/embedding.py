@@ -27,7 +27,7 @@ class TokenEmbedding(nn.Module):
     将 token id 映射为 d_model 维向量,并乘以 sqrt(d_model)
 
     Args:
-        vocab_size (int): 词表大小,通常为 TokenizerConfig.VOCAB_SIZE
+        vocab_size (int): 词表大小,通常为 TokenizerConfig.vocab_size
         d_model (int): 模型隐藏维度,通常为 512
         pad_id (int): <pad> token id,其 embedding 向量始终为 0
 
@@ -55,6 +55,7 @@ class TokenEmbedding(nn.Module):
         # 初始化 nn.Embedding(vocab_size, d_model, padding_idx=pad_id)
         # 提示: padding_idx 参数会让 <pad> 的 embedding 始终为 0,且不参与梯度更新
         self.embedding = nn.Embedding(vocab_size, d_model, padding_idx=pad_id)
+        # 保存模型维度,供 forward 中缩放使用
         self.d_model = d_model
 
     def forward(self, x: Tensor) -> Tensor:
@@ -127,7 +128,10 @@ class PositionalEncoding(nn.Module):
         #   c. pe[:, 0::2] = sin(position * div_term)
         position_encoding_matrix[:, 0::2] = torch.sin(position * div_term)
         #   d. pe[:, 1::2] = cos(position * div_term)
-        position_encoding_matrix[:, 1::2] = torch.cos(position * div_term)
+        cosine_column_count = position_encoding_matrix[:, 1::2].size(1)
+        position_encoding_matrix[:, 1::2] = torch.cos(
+            position * div_term[:cosine_column_count]
+        )
         #   e. pe = pe.unsqueeze(0) → shape (1, max_seq_length, d_model)
         position_encoding_matrix = position_encoding_matrix.unsqueeze(0)
         #   为什么要用 register_buffer？
@@ -147,6 +151,11 @@ class PositionalEncoding(nn.Module):
         # 步骤:
         #   1. seq_length = x.size(1)
         seq_length = x.size(1)
+        if seq_length > self.position_encoding_matrix.size(1):
+            raise ValueError(
+                f"序列长度 {seq_length} 超过位置编码上限 "
+                f"{self.position_encoding_matrix.size(1)}"
+            )
         #   2. 从 self.pe 中切片 self.pe[:, :seq_length, :] → shape (1, seq_length, d_model)
         #   3. x + pe_slice(广播相加)
         x = x + self.position_encoding_matrix[:, :seq_length, :]
