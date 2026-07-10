@@ -94,7 +94,24 @@ class EarlyStopping:
         # 注意:
         #   - best_score 初始化为 None, 第一次调用 __call__ 时自动赋值
         #   - mode 影响比较方向, 见 _is_improved 方法的提示
-        raise NotImplementedError("TODO: 实现 EarlyStopping.__init__")
+        if patience <= 0:
+            raise ValueError("patience 必须大于 0")
+        if min_delta < 0:
+            raise ValueError("min_delta 不能小于 0")
+        if mode not in {"min", "max"}:
+            raise ValueError("mode 必须是 'min' 或 'max'")
+        if convergence_window <= 1:
+            raise ValueError("convergence_window 必须大于 1")
+        if convergence_threshold < 0:
+            raise ValueError("convergence_threshold 不能小于 0")
+
+        self.patience = patience
+        self.min_delta = min_delta
+        self.mode = mode
+        self.overfitting_threshold = overfitting_threshold
+        self.convergence_window = convergence_window
+        self.convergence_threshold = convergence_threshold
+        self.reset()
 
     def __call__(
         self,
@@ -142,7 +159,25 @@ class EarlyStopping:
         #   5. self._check_early_stop(val_loss, train_loss)
         #
         #   6. return is_improved
-        raise NotImplementedError("TODO: 实现 EarlyStopping.__call__")
+        self.val_history.append(val_loss)
+
+        if self.best_score is None:
+            self.best_score = val_loss
+            if epoch is not None:
+                self.best_epoch = epoch
+            return True
+
+        is_improved = self._is_improved(val_loss)
+        if is_improved:
+            self.best_score = val_loss
+            self.counter = 0
+            if epoch is not None:
+                self.best_epoch = epoch
+        else:
+            self.counter += 1
+
+        self._check_early_stop(val_loss, train_loss)
+        return is_improved
 
     def _is_improved(self, score: float) -> bool:
         """
@@ -164,7 +199,11 @@ class EarlyStopping:
         #        return score < self.best_score - self.min_delta
         #      else:
         #        return score > self.best_score + self.min_delta
-        raise NotImplementedError("TODO: 实现 EarlyStopping._is_improved")
+        if self.best_score is None:
+            return True
+        if self.mode == "min":
+            return score < self.best_score - self.min_delta
+        return score > self.best_score + self.min_delta
 
     def _check_early_stop(self, val_loss: float, train_loss: Optional[float]) -> None:
         """
@@ -205,7 +244,28 @@ class EarlyStopping:
         #   - mean = sum(recent) / len(recent)
         #   - variance = sum((x - mean) ** 2 for x in recent) / len(recent)
         #   - std = variance ** 0.5
-        raise NotImplementedError("TODO: 实现 EarlyStopping._check_early_stop")
+        if self.overfitting_threshold is not None and train_loss is not None:
+            gap = val_loss - train_loss if self.mode == "min" else train_loss - val_loss
+            if gap > self.overfitting_threshold:
+                self.should_stop = True
+                self.stop_reason = f"过拟合: gap={gap:.4f}"
+                return
+
+        if len(self.val_history) >= self.convergence_window:
+            recent_values = self.val_history[-self.convergence_window :]
+            mean = sum(recent_values) / len(recent_values)
+            variance = sum((value - mean) ** 2 for value in recent_values) / len(
+                recent_values
+            )
+            standard_deviation = variance**0.5
+            if standard_deviation < self.convergence_threshold:
+                self.should_stop = True
+                self.stop_reason = f"收敛: std={standard_deviation:.6f}"
+                return
+
+        if self.counter >= self.patience:
+            self.should_stop = True
+            self.stop_reason = f"连续{self.patience}轮无改善"
 
     def reset(self) -> None:
         """重置早停状态, 用于重新训练"""
@@ -216,7 +276,12 @@ class EarlyStopping:
         #   4. self.should_stop = False
         #   5. self.stop_reason = ""
         #   6. self.val_history = []
-        raise NotImplementedError("TODO: 实现 EarlyStopping.reset")
+        self.counter = 0
+        self.best_score: float | None = None
+        self.best_epoch = 0
+        self.should_stop = False
+        self.stop_reason = ""
+        self.val_history: list[float] = []
 
     def state_dict(self) -> dict:
         """
@@ -234,7 +299,14 @@ class EarlyStopping:
         #        "stop_reason": self.stop_reason,
         #        "val_history": self.val_history,
         #      }
-        raise NotImplementedError("TODO: 实现 EarlyStopping.state_dict")
+        return {
+            "counter": self.counter,
+            "best_score": self.best_score,
+            "best_epoch": self.best_epoch,
+            "should_stop": self.should_stop,
+            "stop_reason": self.stop_reason,
+            "val_history": list(self.val_history),
+        }
 
     def load_state_dict(self, state: dict) -> None:
         """
@@ -250,4 +322,21 @@ class EarlyStopping:
         #   4. self.should_stop = state["should_stop"]
         #   5. self.stop_reason = state["stop_reason"]
         #   6. self.val_history = state["val_history"]
-        raise NotImplementedError("TODO: 实现 EarlyStopping.load_state_dict")
+        required_keys = {
+            "counter",
+            "best_score",
+            "best_epoch",
+            "should_stop",
+            "stop_reason",
+            "val_history",
+        }
+        missing_keys = required_keys.difference(state)
+        if missing_keys:
+            raise KeyError(f"早停状态缺少字段: {sorted(missing_keys)}")
+
+        self.counter = int(state["counter"])
+        self.best_score = state["best_score"]
+        self.best_epoch = int(state["best_epoch"])
+        self.should_stop = bool(state["should_stop"])
+        self.stop_reason = str(state["stop_reason"])
+        self.val_history = list(state["val_history"])
